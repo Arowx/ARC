@@ -1,0 +1,16 @@
+# Line endings: git stores LF; Windows scripts check out with CRLF, shell scripts with LF
+* text=auto
+*.bat text eol=crlf
+*.sh text eol=lf
+*.py text eol=lf
+*.arclvl text eol=lf
+# Binary assets
+*.png binary
+*.jpg binary
+*.glb binary
+*.ogg binary
+*.wav binary
+*.arcf binary
+*.arcm binary
+*.arca binary
+*.pak binary

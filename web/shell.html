@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Loading…</title>
+<style>
+  :root { --arc-sl: env(safe-area-inset-left, 0px); --arc-st: env(safe-area-inset-top, 0px); --arc-sr: env(safe-area-inset-right, 0px); --arc-sb: env(safe-area-inset-bottom, 0px); }   /* ARC 0.10.1 arc_safe_area() */
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0e14; color: #9fb0c8; font: 13px/1.4 system-ui, sans-serif; }
+  #wrap { display: flex; height: 100%; align-items: center; justify-content: center; }
+  canvas { max-width: 100vw; max-height: 100vh; aspect-ratio: 16 / 9; image-rendering: auto; outline: none; display: block; touch-action: none; }
+  #load { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; pointer-events: none; transition: opacity .3s; }
+  #load.done { opacity: 0; }
+  #bar { width: min(320px, 60vw); height: 6px; border-radius: 3px; background: #1c2433; overflow: hidden; }
+  #fill { width: 0; height: 100%; background: #6fa8ff; transition: width .15s; }
+  #fill.busy { width: 30%; animation: busy 1.1s ease-in-out infinite alternate; }
+  @keyframes busy { from { margin-left: 0; } to { margin-left: 70%; } }
+  #msg { opacity: .75; }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas></div>
+<div id="load"><div id="bar"><div id="fill" class="busy"></div></div><div id="msg">Loading</div></div>
+<script>
+  // URL query -> argv:  index.html?--seed=4&--cmd=step%2060;shot%20a.png
+  var args = location.search.length > 1 ? location.search.slice(1).split('&').map(decodeURIComponent).filter(Boolean) : [];
+  var canvas = document.getElementById('canvas'), fill = document.getElementById('fill'), msg = document.getElementById('msg');
+  // Keys that would scroll the page (or the itch.io page around it) belong to the game, even while it loads.
+  var GAME_KEYS = { ' ': 1, Tab: 1, ArrowUp: 1, ArrowDown: 1, ArrowLeft: 1, ArrowRight: 1, PageUp: 1, PageDown: 1, Home: 1, End: 1, Backspace: 1 };
+  window.addEventListener('keydown', function (e) {
+    var t = e.target && e.target.tagName;
+    if (GAME_KEYS[e.key] && t !== 'INPUT' && t !== 'TEXTAREA') e.preventDefault();
+  }, { capture: true });
+  window.addEventListener('wheel', function (e) { if (e.target === canvas) e.preventDefault(); }, { passive: false });
+  canvas.addEventListener('pointerdown', function () { canvas.focus(); window.focus(); });
+  var Module = {
+    arguments: args,
+    canvas: canvas,
+    print: function (t) { console.log(t); },
+    printErr: function (t) { console.error(t); },
+    setStatus: function (s) {   // "Downloading data... (12345/67890)" while the assets come in
+      var m = /\((\d+(\.\d+)?)\/(\d+)\)/.exec(s || '');
+      if (m) { fill.classList.remove('busy'); fill.style.width = (100 * m[1] / m[3]).toFixed(1) + '%'; msg.textContent = 'Loading ' + Math.floor(100 * m[1] / m[3]) + '%'; }
+      else if (s) msg.textContent = s.replace(/\.\.\.$/, '');
+    },
+    onRuntimeInitialized: function () {
+      document.getElementById('load').classList.add('done');
+      canvas.focus(); window.focus();
+    }
+  };
+  window.onerror = function (e) { msg.textContent = 'Error: ' + e; document.getElementById('load').classList.remove('done'); };
+</script>
+{{{ SCRIPT }}}
+</body>
+</html>

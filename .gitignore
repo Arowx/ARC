@@ -1,0 +1,11 @@
+# ARC: build output and local files (everything else is source)
+/build/
+/dist/
+*.exe
+*.pdb
+*.ilk
+*.playtest
+.vscode/
+.vs/
+Thumbs.db
+desktop.ini
