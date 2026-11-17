@@ -62,7 +62,7 @@ arc_app arc_main(int argc, char **argv) {
 - [Terrain (0.9.6): height grids, splatted ground, scattered props](api/terrain.md) - 33 names
 - [Profiling](api/profiling.md) - 3 names
 - [Files](api/files.md) - 5 names
-- [Loading in the background (0.7.1)](api/loading-in-the-background.md) - 20 names
+- [Loading in the background (0.7.1)](api/loading-in-the-background.md) - 21 names
 - [Developer tools (0.7.2): tile level editor, replay timeline](api/developer-tools.md) - 99 names
 - [Multiplayer (0.8): deterministic maths, turn-based LAN sessions](api/multiplayer.md) - 95 names
 
@@ -1072,6 +1072,7 @@ arc_app arc_main(int argc, char **argv) {
 - `arc_pack_fetch` - "levels.arcpak" (a URL relative to the page, or a file)
 - `arc_pack_state` - ARC_PACK_*: NONE before arc_pack_fetch (or a load) asked for it
 - `arc_pack_ready` - mounted (or nothing to fetch: desktop, a single-package build)
+- `arc_file_listed` - 0.10.9 arc_file_exists, or a file that a pack still to come holds (listed in arc_packs.tx…
 
 ## [Developer tools (0.7.2): tile level editor, replay timeline](api/developer-tools.md)
 

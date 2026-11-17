@@ -81,7 +81,7 @@ Pass commands with `--cmd "a; b"`, `--script file.txt`, or interactively with `-
 | `editor tile CH` / `editor tool brush\|line\|rect\|fill\|pick` / `editor play\|pause` | select a tile or tool / let the game's tick run while editing (play from here) |
 | `editor layer N` / `editor view 2d\|3d\|game` / `editor orbit YAW PITCH DIST [X Z]` | 0.10.3: the layer (deck) edited / the view / the 3D view's camera (degrees, cells) |
 | `editor object add X Y KIND [name=value ...]` / `object set N NAME [VALUE]` / `object move N X Y` / `object del N` / `object list` | 0.10.8 (with `arc_editor_desc.level`): objects on the current layer, each one undo step; `dump`'s `editor.objects` lists them |
-| `editor setting KEY [VALUE]` / `editor rename NAME` | 0.10.8: the current layer's settings / name (no VALUE removes it) |
+| `editor setting KEY [VALUE]` / `editor rename NAME` | 0.10.8: the current layer's settings / name (no VALUE removes it; 0.10.9: every word after it counts, `editor rename Cargo Hold`) |
 | `editor select X0 Y0 X1 Y1\|none` / `copy` / `cut` / `paste X Y` / `clear` / `rotate` / `flip h\|v` | 0.10.8: a rectangle of cells and the objects in it; rotate / flip work on the clipboard; each edit one undo step |
 | `editor onion above\|below\|off` / `editor playtest X Y` / `editor tab tiles\|objects\|layer` / `editor kind KIND` | 0.10.8: the neighbouring layer faint in 2D / the game's playtest hook (the editor closes) / the panel |
 | `timeline on\|off` | the replay timeline bar (0.7.2; also F9 with dev keys or in any `--replay` run, `--timeline` at start); `scrub` is the same command |
@@ -102,6 +102,9 @@ Pass commands with `--cmd "a; b"`, `--script file.txt`, or interactively with `-
 | `net wait tick N\|confirmed N\|waiting\|resumed\|dropped\|alone` | rollback: match tick N reached / every input before N known here and acknowledged by the others / the match waited, ran again, lost a player, has no one else left |
 | `echo TEXT` / `quit` / `help` | — |
 | anything else | passed to the game's `command()` callback |
+
+Words are split at spaces; "double quotes" keep spaces inside one word and are dropped (0.10.9: `editor object add 3 3
+droid note="a repair droid"`). `type TEXT` takes the rest of the line as it is.
 
 With `--stdin`, the engine prints `ARC ready tick=N` whenever it is waiting for a command.
 
@@ -130,12 +133,14 @@ A 3D view drawn into a render target (0.10.7) is listed too: its meshes, markers
 when the target was drawn there with `arc_draw_texture_ex` / `arc_draw_sprite`, and `target_box` is in the target's
 pixels (`"on_screen_box": false` when it never reached the screen). `frame.targets[*]` lists each target pass (size,
 camera `eye`, mesh count, `on_screen_at`). Marker shapes are names: `frame.markers[shape=ring]`.
+Immediate-mode games (0.10.9): `frame` lists what the last tick drew, targets, markers and texts included, the same
+as for games with `draw()`.
 
 ## Hints (0.9.0)
 
 ARC prints `ARC hint <what went wrong>: <the fix>` once per kind when a game does something that works but breaks testing or speed:
 drawing outside `draw()`, `arc_rand_*` called from `draw()`, loading the same file again and again, loading inside
-`tick`/`draw`, a `dump` with no dump callback. Treat a hint as a to-do item; they never stop the game.
+`tick`/`draw` (a queued load, inside `arc_load_begin`/`arc_load_end`, is fine), a `dump` with no dump callback. Treat a hint as a to-do item; they never stop the game.
 
 ## Engine self-test summary (0.9.1)
 
@@ -157,6 +162,8 @@ It prints PASS/FAIL per line and exits 1 on any failure or `ARC error`. Finish a
 `python3 <ARC>/tools/arc_doctor.py [GAME_DIR] [--json]` reads the game's code and assets and lists problems with a fix
 for each: `rand()`/time in game code, no `.dump`, loads in `tick`/`draw`, assets named in code but missing, huge
 textures or sounds, missing build scripts. ERROR lines exit 1. Run it before a release and when something is odd.
+It skips names the game writes (screenshots, saves, `arc_file_write`), `arc_packs.txt` and `WEB_PACKS` packs (0.10.9);
+put `doctor: not an asset` in a comment on a line it reports wrongly.
 
 ## Importing assets: `tools/arc_import.py` (0.9.0)
 
@@ -375,7 +382,8 @@ grep for the macro in a build script, instead of searching `arc.h` for function 
   pack next to `index.html`. Queued loads of files in a pack fetch it on their own; `arc_pack_fetch("levels.arcpak")`
   starts it early; `arc_pack_ready` / the group's `arc_load_progress` tell when. Packs (and the first package) are kept
   in the browser's cache, so a second visit downloads nothing big. Only queued loads can wait for a pack: load files that
-  live in packs inside `arc_load_begin`/`arc_load_end`, never with a plain load at once.
+  live in packs inside `arc_load_begin`/`arc_load_end`, never with a plain load at once. `arc_file_listed(path)` (0.10.9)
+  says whether a file is in the assets or in a pack that is coming (`arc_file_exists` is false until the pack is in).
 - Desktop and headless builds read everything from `assets/` as before (`arc_pack_fetch` is done at once), so the same
   game code works everywhere. Test the web build itself in headless Chromium: `python3 tests/web_load_test.py`.
 

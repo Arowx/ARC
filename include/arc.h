@@ -55,8 +55,8 @@ extern "C" {
 #define ARC_GAME_API
 #endif
 
-#define ARC_VERSION "0.10.8"
-#define ARC_VERSION_NUM 1008  /* major*10000 + minor*100 + patch; games can #if ARC_VERSION_NUM < ... #error */
+#define ARC_VERSION "0.10.9"
+#define ARC_VERSION_NUM 1009  /* major*10000 + minor*100 + patch; games can #if ARC_VERSION_NUM < ... #error */
 /* 0.9.8 feature macros: one per feature group, so a game (or its CMake) can #if on what this arc.h has instead of
    searching it for function names. The value is the ARC_VERSION_NUM it arrived in. New groups are added here with
    each release; a macro is never removed while its feature stays. */
@@ -100,6 +100,8 @@ extern "C" {
 #define ARC_HAS_PART_RULES     1006  /* arc_paint_parts_rule; *Shoulder* / *Clavicle* joints paint as arms */
 #define ARC_HAS_FRAME_TARGETS  1007  /* `frame` lists what is drawn into render targets (target, pass, target_box, frame.targets) */
 #define ARC_HAS_LEVELS         1008  /* arc_level files; the editor's objects, layer settings, copy / paste, onion skin, playtest, --editor FILE */
+#define ARC_HAS_IMMEDIATE_FRAME 1009 /* `frame` lists what immediate-mode games draw in tick() (markers, texts, targets) */
+#define ARC_HAS_FILE_LISTED    1009  /* arc_file_listed: a file is here or in a web pack that is coming; "double quoted" words in commands */
 
 /* ======================================================================== */
 /* Math (header-only, inlined)                                              */
@@ -2650,6 +2652,9 @@ enum { ARC_PACK_NONE = 0, ARC_PACK_FETCHING, ARC_PACK_READY, ARC_PACK_FAILED };
 ARC_API arc_load_group arc_pack_fetch(const char *name);   /* "levels.arcpak" (a URL relative to the page, or a file) */
 ARC_API int            arc_pack_state(const char *name);   /* ARC_PACK_*: NONE before arc_pack_fetch (or a load) asked for it */
 ARC_API bool           arc_pack_ready(const char *name);   /* mounted (or nothing to fetch: desktop, a single-package build) */
+/* 0.10.9 arc_file_exists, or a file that a pack still to come holds (listed in arc_packs.txt, its pack not failed): a
+   queued load of it will work. On desktop the same as arc_file_exists. */
+ARC_API bool           arc_file_listed(const char *path);
 
 /* ======================================================================== */
 /* Developer tools (0.7.2): tile level editor, replay timeline              */

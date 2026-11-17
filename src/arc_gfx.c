@@ -886,7 +886,7 @@ static void load_hints(const char *path) {
     int i = (int)(h & 255);
     if (seen[i].h != h) { seen[i].h = h; seen[i].n = 0; }
     if (++seen[i].n == 4) arc__hint(path, "%s loaded 4 times: every load makes a new copy in memory. Load it once in init() and keep the handle.", path);
-    if (arc__phase == ARC__PHASE_TICK || arc__phase == ARC__PHASE_DRAW)
+    if ((arc__phase == ARC__PHASE_TICK || arc__phase == ARC__PHASE_DRAW) && !arc__load_queueing())   /* (0.10.9: a queued load is fine) */
         arc__hint("load-in-play", "%s loaded during %s: reading and decoding files stalls that frame. Load in init(), or queue it with arc_load_begin(ARC_LOAD_BACKGROUND).", path, arc__phase == ARC__PHASE_TICK ? "tick()" : "draw()");
 }
 arc_mesh arc_mesh_load(const char *path) {
@@ -2188,6 +2188,9 @@ static uint32_t fr_map(uint32_t tgt, float b[4]) {
 }
 void arc__frame_target_name(uint32_t id, char *out, size_t n) { if (id < ARC__MAX_TEXTURES && g_tname[id][0]) snprintf(out, n, "%s", g_tname[id]); else snprintf(out, n, "#%u", (unsigned)id); }
 void arc__frame_record(bool on) { g_fr.on = on; g_fr.depth = 0; g_fr.nt = g_fr.ns = g_fr.nr = g_fr.nchars = g_fr.nb = 0; }
+/* 0.10.9 (Moonbase Raid) immediate mode: every tick's frame is recorded while it is drawn (arc__frame_record(true)
+   before the tick), then kept, recording off (this), so `frame` describes the frame it shows without drawing again */
+void arc__frame_keep(void) { g_fr.on = false; g_fr.depth = 0; }
 static void fr_text(float x, float y, float w, float h, uint32_t rgb, const char *s) {
     if (!g_fr.on || g_fr.depth || !s || !*s || g_fr.nt >= 512) return;
     size_t n = strlen(s); if (n > 400) n = 400;

@@ -96,6 +96,7 @@ python tools\arc_check.py tests\card_check.md --exe build\review_headless.exe ||
 rem 0.10.7: frame lists what is drawn into render targets (tests\target_game.c)
 cl %CFLAGS% /DARC_HEADLESS_ONLY tests\target_game.c src\arc.c /Fo:build\ /Fe:build\target_headless.exe || exit /b 1
 python tools\arc_check.py tests\target_check.md --exe build\target_headless.exe || exit /b 1
+python tools\arc_check.py tests\target_immediate_check.md --exe build\target_headless.exe || exit /b 1
 rem 0.10.8: level files and the deck editor (tests\level_game.c)
 cl %CFLAGS% /DARC_HEADLESS_ONLY tests\level_game.c src\arc.c /Fo:build\ /Fe:build\level_headless.exe || exit /b 1
 python tools\arc_check.py tests\level_check.md --exe build\level_headless.exe || exit /b 1
@@ -106,6 +107,13 @@ python tools\arc_check.py tests\split_check.md --exe build\split_headless.exe ||
 python tools\arc_doctor.py tests\doctor_fixture > build\doctor.txt
 findstr /c:"missing.png" build\doctor.txt >nul || (echo ARC error doctor & exit /b 1)
 findstr /c:"rand() in game code" build\doctor.txt >nul || (echo ARC error doctor & exit /b 1)
+findstr /c:"comment_only" build\doctor.txt >nul && (echo ARC error doctor false alarm comment_only & exit /b 1)
+findstr /c:"arc_packs.txt" build\doctor.txt >nul && (echo ARC error doctor false alarm arc_packs.txt & exit /b 1)
+findstr /c:"lvl.arcpak" build\doctor.txt >nul && (echo ARC error doctor false alarm lvl.arcpak & exit /b 1)
+findstr /c:"view.png" build\doctor.txt >nul && (echo ARC error doctor false alarm view.png & exit /b 1)
+findstr /c:"notes_out" build\doctor.txt >nul && (echo ARC error doctor false alarm notes_out & exit /b 1)
+findstr /c:"made_at_run_time" build\doctor.txt >nul && (echo ARC error doctor false alarm made_at_run_time & exit /b 1)
+findstr /c:"uses ARC 0.10.6" build\doctor.txt >nul || (echo ARC error doctor version & exit /b 1)
 echo ARC ok doctor
 python tools\gen_api_docs.py --check || exit /b 1
 python -c "import re;s=open('docs/QUICK.md').read();open('build/quick_example.c','w').write(re.search(r'```c\n(.*?)```',s,re.S).group(1))" || exit /b 1

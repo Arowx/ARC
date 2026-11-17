@@ -280,6 +280,8 @@ static int wp_start(int i) {
     FILE *fp = fopen(p->name, "rb");
     if (fp) { fclose(fp); p->state = arc_pack_mount(p->name) ? ARC_PACK_READY : ARC_PACK_FAILED; return p->state; }
     if (!f) { p->state = ARC_PACK_READY; return p->state; }   /* desktop / headless: the files are loose on disk */
+    wp_manifest();
+    if (!WP.have) { p->state = ARC_PACK_READY; return p->state; }   /* 0.10.9: no manifest (a single-package web build): its files were preloaded, nothing to fetch */
     char key[256]; bool keyed = p->listed && arc__pack_cache_key(p->name, p->hash, key, sizeof key);
     p->job = f->start(p->name, keyed ? key : NULL); p->got = 0;
     p->state = p->job ? ARC_PACK_FETCHING : ARC_PACK_FAILED;
@@ -350,6 +352,15 @@ arc_load_group arc_pack_fetch(const char *name) {
     if (wp_start(i) == ARC_PACK_FETCHING) gid = arc__load_queue_pack(i);
     if (own) return arc_load_end();
     arc_load_group g = { gid ? gid : arc__load_group_open() }; return g;
+}
+/* 0.10.9: a file that is here, or that a pack still to come (listed in arc_packs.txt, not failed) holds */
+bool arc_file_listed(const char *path) {
+    if (!path || !*path) return false;
+    if (arc_file_exists(path)) return true;
+    wp_manifest();
+    char nb[512]; pack_norm(path, nb, sizeof nb);
+    for (int i = 0; i < WP.nfiles; i++) if (!strcmp(WP.files[i].path, nb)) return WP.packs[WP.files[i].pack].state != ARC_PACK_FAILED;
+    return false;
 }
 int arc_pack_state(const char *name) { int i = arc__pack_find(name); return i < 0 ? ARC_PACK_NONE : WP.packs[i].state; }
 bool arc_pack_ready(const char *name) { return arc_pack_state(name) == ARC_PACK_READY; }

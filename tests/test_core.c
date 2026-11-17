@@ -406,6 +406,7 @@ static void check_3d_target(void) {
 #include "test_v105.c"
 #include "test_v106.c"
 #include "test_v108.c"
+#include "test_v109.c"
 static void init(void) { v071s_init(); v07_ui(); v07_audio(); v06_materials(); v051_math_text(); v051_buses(); v051_frame_times(); v051_jpeg(); v05_collision(); v05_audio(); v05_state_io(); v05_pack(); v05_review(); test_v04(); test_math(); test_rng(); test_pool(); test_arena(); test_png(); test_turns(); test_draw_api(); make_test_font(); test_audio(); test_mp3_audio(); test_saves(); v071l_init(); v072t_init(); v080n_init(); v081r_init(); v082_init(); v085r_init(); v092_init(); v093_init(); v094_init(); v095_init(); v096_init(); v097j_init(); v097d_init(); v098r_init(); v099b_init(); v100_init(); v101_init(); v102_init(); v103_init(); v105_init(); v106_init(); v108_init(); }
 static arc_texture tgt; static int tw_in = -1, tw_out = -1;
 static const uint8_t *tpx(int x, int y) { return arc__textures[tgt.id].rgba + ((size_t)y * 16 + x) * 4; }
@@ -459,7 +460,7 @@ static void tick(void) {
         p = tpx(5, 3); CHECK(p[1] == 255 && p[0] == 0); p = tpx(6, 5); CHECK(p[1] == 255 && p[0] == 0);   /* glyph pixels */
         p = tpx(4, 3); CHECK(p[0] == 0 && p[2] == 255); p = tpx(7, 3); CHECK(p[0] == 0 && p[2] == 255);  /* around it: blue */
         p = tpx(5, 2); CHECK(p[2] == 255 && p[1] == 0);
-        check_3d_target(); v064_check(); v067_check(); v06_check(); v06_check_lights(); v06_check_fx(); v05_check(); v05_check_shadows(); v05_check_post(); v07_check(); v07fx_check(); v071s_check(); v071l_check(); v072d_check(); v080n_check(); v081r_check(); v085r_check(); v086w_check(); v095_check(); v096_check();
+        check_3d_target(); v064_check(); v067_check(); v06_check(); v06_check_lights(); v06_check_fx(); v05_check(); v05_check_shadows(); v05_check_post(); v07_check(); v07fx_check(); v071s_check(); v071l_check(); v072d_check(); v080n_check(); v081r_check(); v085r_check(); v086w_check(); v109_check(); v095_check(); v096_check();
         CHECK(cmd_release_seen);
         CHECK(cmd_args_argc == 20 && !strcmp(cmd_args_last, "a20"));   /* past the old 16-word cut */
     }

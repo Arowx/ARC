@@ -448,6 +448,8 @@ bool arc__level_hot_reload(uint32_t id, const char *path);
 size_t arc__level_object_line(const arc_level *l, int layer, int i, char *out, size_t cap);
 int arc__level_object_insert_line(arc_level *l, int layer, int at, const char *line);
 void arc__editor_level_reloaded(arc_level *l);
+int arc__hint_count(const char *key);   /* 0.10.9: times a hint was asked for (printed once) */
+void arc__frame_keep(void);   /* 0.10.9: the recording kept (immediate mode), not added to */
 uint32_t arc__frame_target(void);   /* 0.10.7: the render target 2D and markers go into now, for `frame` (0 = screen or viewport) */
 void arc__frame_target_name(uint32_t id, char *out, size_t n);   /* its name, or "#id" */   /* 0.10.6: the ARC_PART_* a joint name paints as */
 uint8_t *arc__replay_widen(const uint8_t *d, size_t size, size_t *out);   /* 0.10.5 replay format 2 -> 3 (tests) */

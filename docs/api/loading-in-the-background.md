@@ -69,3 +69,10 @@ ARC_API arc_load_group arc_pack_fetch(const char *name);    // "levels.arcpak" (
 ARC_API int arc_pack_state(const char *name);    // ARC_PACK_*: NONE before arc_pack_fetch (or a load) asked for it
 ARC_API bool arc_pack_ready(const char *name);    // mounted (or nothing to fetch: desktop, a single-package build)
 ```
+
+0.10.9 arc_file_exists, or a file that a pack still to come holds (listed in arc_packs.txt, its pack not failed): a
+   queued load of it will work. On desktop the same as arc_file_exists.
+
+```c
+ARC_API bool arc_file_listed(const char *path);
+```

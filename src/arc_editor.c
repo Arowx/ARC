@@ -1438,8 +1438,18 @@ void arc__editor_command(int argc, const char **argv) {
         if (!strcmp(op, "list")) { for (int k = 0; k < ed_nobj(); k++) { char line[512]; ed_oline(k, line); printf("ARC editor object %d %s\n", k, line); } ED_OK("ARC ok editor object list %d\n", ed_nobj()); return; }
         ED_OK("ARC error editor object: add X Y KIND [name=value ...] | set N NAME [VALUE] | move N X Y | del N | select N | list\n"); return;
     }
-    if (!strcmp(sub, "setting") && argc >= 3) { if (!LV()) { ED_OK("ARC error editor setting: no level\n"); return; } bool r = arc_editor_set_setting(argv[2], argc >= 4 ? argv[3] : NULL); ED_OK("ARC ok editor setting %s %d\n", argv[2], r ? 1 : 0); return; }
-    if (!strcmp(sub, "rename") && argc >= 3) { if (!LV()) { ED_OK("ARC error editor rename: no level\n"); return; } bool r = arc_editor_set_layer_name(argv[2]); ED_OK("ARC ok editor rename %d\n", r ? 1 : 0); return; }
+    if (!strcmp(sub, "setting") && argc >= 3) {   /* (0.10.9: the value is every word after the key) */
+        if (!LV()) { ED_OK("ARC error editor setting: no level\n"); return; }
+        char v[256] = ""; size_t n = 0;
+        for (int k = 3; k < argc; k++) { int m = snprintf(v + n, sizeof v - n, "%s%s", k > 3 ? " " : "", argv[k]); if (m < 0 || (size_t)m >= sizeof v - n) break; n += (size_t)m; }
+        bool r = arc_editor_set_setting(argv[2], argc >= 4 ? v : NULL); ED_OK("ARC ok editor setting %s %d\n", argv[2], r ? 1 : 0); return;
+    }
+    if (!strcmp(sub, "rename") && argc >= 3) {   /* 0.10.9: every word after it ("editor rename Cargo Hold") */
+        if (!LV()) { ED_OK("ARC error editor rename: no level\n"); return; }
+        char name[256] = ""; size_t n = 0;
+        for (int k = 2; k < argc; k++) { int m = snprintf(name + n, sizeof name - n, "%s%s", k > 2 ? " " : "", argv[k]); if (m < 0 || (size_t)m >= sizeof name - n) break; n += (size_t)m; }
+        bool r = arc_editor_set_layer_name(name); ED_OK("ARC ok editor rename %d\n", r ? 1 : 0); return;
+    }
     if (!strcmp(sub, "select") && argc >= 3) {
         if (!strcmp(argv[2], "none")) { arc_editor_select(-1, -1, -1, -1); ED_OK("ARC ok editor select none\n"); return; }
         if (argc < 6) { ED_OK("ARC error editor select X0 Y0 X1 Y1 | none\n"); return; }
