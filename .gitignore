@@ -9,3 +9,5 @@
 .vs/
 Thumbs.db
 desktop.ini
+__pycache__/
+*.pyc
