@@ -55,8 +55,8 @@ extern "C" {
 #define ARC_GAME_API
 #endif
 
-#define ARC_VERSION "0.10.9"
-#define ARC_VERSION_NUM 1009  /* major*10000 + minor*100 + patch; games can #if ARC_VERSION_NUM < ... #error */
+#define ARC_VERSION "0.10.10"
+#define ARC_VERSION_NUM 1010  /* major*10000 + minor*100 + patch; games can #if ARC_VERSION_NUM < ... #error */
 /* 0.9.8 feature macros: one per feature group, so a game (or its CMake) can #if on what this arc.h has instead of
    searching it for function names. The value is the ARC_VERSION_NUM it arrived in. New groups are added here with
    each release; a macro is never removed while its feature stays. */
@@ -102,6 +102,7 @@ extern "C" {
 #define ARC_HAS_LEVELS         1008  /* arc_level files; the editor's objects, layer settings, copy / paste, onion skin, playtest, --editor FILE */
 #define ARC_HAS_IMMEDIATE_FRAME 1009 /* `frame` lists what immediate-mode games draw in tick() (markers, texts, targets) */
 #define ARC_HAS_FILE_LISTED    1009  /* arc_file_listed: a file is here or in a web pack that is coming; "double quoted" words in commands */
+#define ARC_HAS_MCP            1010  /* tools/arc_mcp.py (docs/MCP.md); window builds with --stdin keep drawing; the `live` command */
 
 /* ======================================================================== */
 /* Math (header-only, inlined)                                              */

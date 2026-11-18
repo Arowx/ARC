@@ -100,6 +100,7 @@ Pass commands with `--cmd "a; b"`, `--script file.txt`, or interactively with `-
 | `net input HEX` / `net input off` / `net input P HEX` | this machine's input as bytes, overriding the game's `net_input` (P: another player, in a synctest) |
 | `net stop_at T` / `net stats` / `net synctest N [PLAYERS]` | hold the match at match tick T (inputs still flow) / one `ARC net rollback ...` line / offline check: roll back N ticks every tick and compare the state |
 | `net wait tick N\|confirmed N\|waiting\|resumed\|dropped\|alone` | rollback: match tick N reached / every input before N known here and acknowledged by the others / the match waited, ran again, lost a player, has no one else left |
+| `live` / `live run\|hold` / `live speed X` | 0.10.10: a window build driven through `--stdin` from a program (`tools/arc_mcp.py`) keeps drawing while it waits; `run` lets it tick on its own clock (the person can play), `hold` stops it; X 0.25..64 also sets how fast `step` plays there |
 | `echo TEXT` / `quit` / `help` | — |
 | anything else | passed to the game's `command()` callback |
 
@@ -112,6 +113,15 @@ Output lines all start with `ARC `:
 
 - `start`, `ok`, `error`, `dump`, `var`, `stats`, `prof`, `log`, `echo`, `ready`, `exit`
 - The self-test also prints `test`.
+
+## Live work through MCP (0.10.10)
+
+`tools/arc_mcp.py` is an MCP server. A `.mcp.json` next to the game starts it: `tools/new_game.py` writes one, and
+`--add-mcp` adds one to an existing game. Its tools build, start (`arc_start(window=true)` opens the real window for
+the person to watch), step, look (`arc_frame`, `arc_dump` with `select`, `arc_shot` as an image, `arc_pick` at a pixel),
+change (`arc_set`, `arc_editor`, `arc_command`) and check (`arc_expect`) a running game. Look with JSON first and take
+a shot only when the look matters. Before stopping, `arc_save_check` keeps the session as an arc-check file, so what
+you found replays headless. `docs/MCP.md` has the details.
 
 ## Starting a new game from a template (0.9.1)
 

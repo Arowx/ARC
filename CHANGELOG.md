@@ -2,6 +2,25 @@
 
 Version numbers follow `ARC_VERSION` in `include/arc.h`. Games can check it at compile time.
 
+## 0.10.10 — 18 Nov 2026: an MCP server for live work
+
+Self-test 2647 (unchanged). Pictures unchanged. New build-test stage "MCP server" (`tests/mcp_test.py`). From Allan:
+agents working on a running game, which the person can watch.
+
+- **`tools/arc_mcp.py`**: an MCP server (Claude Code, Claude Desktop, any MCP client), with no packages needed. Its
+  tools build the game, start it (headless or in its window), step, run any agent command, and read `frame` / `dump`
+  (with `select` to return one part). They also take screenshots returned as images (shrunk, optional orbit camera),
+  pick what is at a pixel, set tunables, run editor commands, test acceptance-check lines live, and reload assets.
+  `arc_save_check` writes the session (every command that changed the game, and each check) as an arc-check file, so
+  what was found live replays headless. `docs/MCP.md`.
+- **Window builds driven through a pipe** (`--stdin` from a program, not a console): the window keeps drawing and
+  answering the OS while ARC waits for a command, and ticks run only when asked. A new agent command, `live run` /
+  `live hold` / `live speed X`, lets the game run on its own clock so the person can play while an agent watches.
+  Headless runs and console `--stdin` are unchanged.
+- **`.mcp.json`**: `tools/new_game.py` writes one for new games, and `--add-mcp` adds one to an existing game. ARC's
+  repo has its own.
+- `arc_check.py`: an `exe` path not found from the current folder is read from the check file's folder.
+
 ## 0.10.9 — 17 Nov 2026: `frame` in immediate mode, web loading fixes
 
 Self-test 2647 (6 new). Pictures unchanged. New acceptance check `tests/target_immediate_check.md` (12 checks, the

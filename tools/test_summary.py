@@ -21,6 +21,7 @@ STAGES = [
     ('templates',          r'ARC ok templates (\d+)',                               r'ARC error template'),
     ('warnings',           r'ARC ok warnings',                                      r'ARC error warnings'),
     ('headless tools',     r'ARC ok headless tools',                                r'ARC error headless tools'),
+    ('MCP server',         r'ARC ok mcp protocol',                                  r'ARC error mcp protocol'),   # 0.10.10
     ('post and shadow',    r'ARC test OK (\d+)/(\d+) post and shadow checks passed', r'ARC test FAILED (\d+)/(\d+) post and shadow checks passed'),
 ]
 

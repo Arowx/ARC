@@ -1236,6 +1236,53 @@ typedef struct { char **lines; int count, pos; } cmd_queue;
 static cmd_queue g_cmds;
 static bool g_stdin_mode;
 static uint64_t g_wait_until;            /* script is paused until this tick */
+/* 0.10.10: a window build with --stdin reading a pipe (tools/arc_mcp.py) never blocks on it: the window keeps drawing
+   and answering the OS while ARC waits for a command, and ticks run only when asked (step / wait, or `live run`) */
+static bool g_live, g_live_run, g_live_ready, g_live_eof;
+static float g_live_speed = 1.0f;
+#if defined(_WIN32)
+static bool live_stdin_ok(void) { DWORD n; return PeekNamedPipe(GetStdHandle(STD_INPUT_HANDLE), NULL, 0, NULL, &n, NULL) != 0; }
+static int live_stdin_read(char *buf, int cap) {   /* bytes read, 0 none yet, -1 closed */
+    HANDLE h = GetStdHandle(STD_INPUT_HANDLE); DWORD avail = 0, got = 0;
+    if (!PeekNamedPipe(h, NULL, 0, NULL, &avail, NULL)) return -1;
+    if (!avail) return 0;
+    if (!ReadFile(h, buf, avail < (DWORD)cap ? avail : (DWORD)cap, &got, NULL)) return -1;
+    return (int)got;
+}
+#elif !defined(__EMSCRIPTEN__)
+#include <poll.h>
+static bool live_stdin_ok(void) { return true; }
+static int live_stdin_read(char *buf, int cap) {
+    struct pollfd pf = { 0, POLLIN, 0 };
+    if (poll(&pf, 1, 0) <= 0) return 0;
+    ssize_t n = read(0, buf, (size_t)cap);
+    return n > 0 ? (int)n : -1;
+}
+#else
+static bool live_stdin_ok(void) { return false; }
+static int live_stdin_read(char *buf, int cap) { (void)buf; (void)cap; return -1; }
+#endif
+/* one whole line from stdin if there is one (without the newline); false if none yet; sets g_live_eof when closed */
+static bool live_stdin_line(char *out, size_t cap) {
+    static char pend[32768]; static size_t np;
+    for (;;) {
+        char *nl = (char *)memchr(pend, '\n', np);
+        if (nl) {
+            size_t len = (size_t)(nl - pend), k = len < cap - 1 ? len : cap - 1;
+            memcpy(out, pend, k); out[k] = 0;
+            memmove(pend, nl + 1, np - len - 1); np -= len + 1;
+            return true;
+        }
+        if (np == sizeof pend) { memcpy(out, pend, cap - 1); out[cap - 1] = 0; np = 0; return true; }   /* an over-long line in pieces */
+        int n = live_stdin_read(pend + np, (int)(sizeof pend - np));
+        if (n < 0) {
+            if (np) { size_t k = np < cap - 1 ? np : cap - 1; memcpy(out, pend, k); out[k] = 0; np = 0; return true; }
+            g_live_eof = true; return false;
+        }
+        if (n == 0) return false;
+        np += (size_t)n;
+    }
+}
 /* 0.9.8 --shot-at 40,80,120 (or 40=start.png,80=mid.png): screenshots after those ticks, drawn only then */
 #define ARC__SHOT_AT 64
 static uint64_t g_shot_at[ARC__SHOT_AT]; static char g_shot_at_name[ARC__SHOT_AT][256]; static int g_shot_at_n, g_shot_at_next;
@@ -2094,6 +2141,14 @@ static bool run_command(const char *line) {
         for (int i = 0; i < fb.zone_count; i++) printf("ARC budget_zone %s %.3f ms (%.0f%%)\n", fb.zone_name[i], fb.zone_ms[i], 100.0f * fb.zone_ms[i] / fb.budget_ms);
         fflush(stdout); return false;
     }
+    if (!strcmp(c, "live")) {                        /* 0.10.10: window builds driven through --stdin (tools/arc_mcp.py) */
+        const char *a = argc >= 2 ? argv[1] : "info";
+        if (!strcmp(a, "run")) g_live_run = true;
+        else if (!strcmp(a, "hold")) g_live_run = false;
+        else if (!strcmp(a, "speed") && argc >= 3) g_live_speed = arc_clampf((float)atof(argv[2]), 0.25f, 64.0f);
+        printf("ARC live window=%d run=%d speed=%g tick=%llu\n", g_live ? 1 : 0, g_live_run ? 1 : 0, (double)g_live_speed, (unsigned long long)G.ticks); fflush(stdout);
+        return false;
+    }
     if (!strcmp(c, "echo") || !strcmp(c, "log")) { printf("ARC echo %s\n", line + strlen(c) + (line[strlen(c)] ? 1 : 0)); fflush(stdout); return false; }
     if (!strcmp(c, "quit") || !strcmp(c, "exit")) { G.quit = true; return true; }
     if (!strcmp(c, "help")) { print_help(); return false; }
@@ -2114,6 +2169,17 @@ static void agent_before_tick(void) {
             continue;
         }
         if (!g_stdin_mode) return;
+        if (g_live) {                                /* 0.10.10: never block; say ready once per wait */
+            static char lline[16384];
+            if (!live_stdin_line(lline, sizeof lline)) {
+                if (g_live_eof) { G.quit = true; return; }
+                if (!g_live_ready) { printf("ARC ready tick=%llu\n", (unsigned long long)G.ticks); fflush(stdout); g_live_ready = true; }
+                return;
+            }
+            g_live_ready = false;
+            cmd_push_multi(lline);
+            continue;
+        }
         printf("ARC ready tick=%llu\n", (unsigned long long)G.ticks); fflush(stdout);
         static char line[16384];   /* a longer line arrives in pieces */
         if (!fgets(line, sizeof line, stdin)) { G.quit = true; return; }
@@ -2334,6 +2400,7 @@ int arc__startup(int argc, char **argv, const arc__platform *plat) {
     }
     if ((v = arc_arg_value("cmd"))) cmd_push_multi(v);
     g_stdin_mode = arc_arg_flag("stdin");
+    g_live = g_stdin_mode && !G.headless && live_stdin_ok();   /* 0.10.10 */
     if ((v = arc_arg_value("record"))) {
         g_rec_file = fopen(v, "wb");
         if (g_rec_file) { uint32_t ver = ARC__REC_VERSION, hz = (uint32_t)G.tick_hz; fwrite("ARCR", 1, 4, g_rec_file); fwrite(&ver, 4, 1, g_rec_file); fwrite(&g_seed, 8, 1, g_rec_file); fwrite(&hz, 4, 1, g_rec_file); }
@@ -2448,7 +2515,19 @@ bool arc__frame(void) {
     int ticks_to_run;
     bool rb_paced = arc__rb_mode() == 1;            /* 0.8.1: a live rollback match runs on the clock, headless too */
     bool tl_hold = TL.on && TL.paused && !G.headless && !g_stdin_mode && !rb_paced;
-    if ((G.headless || g_stdin_mode) && !rb_paced) ticks_to_run = 1;
+    if (g_live && !rb_paced) {                      /* 0.10.10: a window driven through a pipe: draw always, tick when asked */
+        agent_before_tick();
+        if (g_live_run || G.ticks < g_wait_until) {
+            if (real_dt > 0.25) real_dt = 0.25;
+            G.acc += real_dt * (double)g_live_speed;
+            ticks_to_run = (int)(G.acc / G.dt);
+            G.acc -= ticks_to_run * (double)G.dt;
+            int cap = arc_maxi(8, (int)(8.0f * g_live_speed + 0.5f));
+            if (ticks_to_run > cap) ticks_to_run = cap;
+            if (!g_live_run && G.ticks < g_wait_until && (uint64_t)ticks_to_run > g_wait_until - G.ticks) ticks_to_run = (int)(g_wait_until - G.ticks);
+        } else { G.acc = 0; ticks_to_run = 0; }
+    }
+    else if ((G.headless || g_stdin_mode) && !rb_paced) ticks_to_run = 1;
     else if (tl_hold) {                             /* paused: no ticks, but scripted commands still run */
         G.acc = G.dt; ticks_to_run = 0;
         agent_before_tick();
