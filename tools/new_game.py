@@ -10,6 +10,7 @@
                                                                        # folders of assets/ fetched on demand (0.8.6)
     python tools/new_game.py D:/Projects/MyGame --template tactics     # start from a genre template (0.9.1):
                                                                        # tactics, shooter, platformer, racer, cards, deck
+    python tools/new_game.py D:/Projects/MyGame --add-mcp             # write .mcp.json into an existing game (0.10.10)
     python tools/new_game.py --list-templates
 
 The new project gets:
@@ -21,6 +22,7 @@ The new project gets:
     build.sh         Linux/WSL/macOS shell:    ./build.sh [linux|headless|win|web|release]
     AGENTS.md        instructions for AI agents working on this game
     arc.txt          where ARC lives (one line); build scripts read it
+    .mcp.json        starts ARC's MCP server for Claude Code and other MCP clients (0.10.10, docs/MCP.md)
 
 Shared mode (default): arc.txt holds the path to this ARC folder, so every game uses the same engine
 and gets fixes immediately. Vendored mode (--vendor): ARC's include/ and src/ are copied into
@@ -277,6 +279,9 @@ This game runs on the **ARC** engine. The engine lives at the path in `arc.txt`.
 - Checks: `python <ARC>/tools/arc_check.py tests/acceptance.md` (when there is one) and `python <ARC>/tools/arc_doctor.py`.
 - Art: `python <ARC>/tools/arc_import.py art/thing.glb --height 2` files it under assets/ and prints the load line.
 - Release: `python <ARC>/tools/arc_release.py --dry-run`, then `--version X.Y.Z` (settings in `release.json`).
+- Live (0.10.10): `.mcp.json` starts ARC's MCP server (`<ARC>/tools/arc_mcp.py`): `arc_build`, `arc_start` (window=true
+  to let the person watch), `arc_step`, `arc_frame`, `arc_shot`, `arc_pick`, `arc_expect`, and `arc_save_check` to keep
+  what you found as a headless test. See `<ARC>/docs/MCP.md`.
 
 ## Game-specific commands (`command()` callback)
 
@@ -285,6 +290,25 @@ This game runs on the **ARC** engine. The engine lives at the path in `arc.txt`.
 
 def zipname(title):   # "Babel" -> Babel-windows.zip; "My Game!" -> MyGame-windows.zip
     return ''.join(c for c in title if c.isalnum() or c in '_-') or 'game'
+
+def write_mcp(dest, arc_path):   # 0.10.10: Claude Code (and other MCP clients) find ARC's tools for this game
+    import json
+    cfg = {'mcpServers': {'arc': {'command': 'python', 'args': [arc_path.rstrip('/') + '/tools/arc_mcp.py', '--game', '.']}}}
+    p = os.path.join(dest, '.mcp.json')
+    if os.path.exists(p):
+        try:
+            old = json.load(open(p, encoding='utf-8'))
+            old.setdefault('mcpServers', {})['arc'] = cfg['mcpServers']['arc']; cfg = old
+        except ValueError:
+            pass
+    open(p, 'w', newline='\n').write(json.dumps(cfg, indent=2) + '\n')
+    return p
+
+def add_mcp(dest):
+    t = os.path.join(dest, 'arc.txt')
+    if not os.path.exists(t): sys.exit('no arc.txt in %s: is it an ARC game folder?' % dest)
+    arc_path = open(t, encoding='utf-8').read().strip() or ARC_ROOT
+    print('wrote ' + write_mcp(dest, arc_path) + ' (the arc MCP server; Claude Code asks once before using it)')
 
 def update_scripts(dest, a):
     import re
@@ -312,6 +336,7 @@ def main():
     ap.add_argument('--cpp', action='store_true', help='C++ starter (main.cpp)')
     ap.add_argument('--vendor', action='store_true', help='copy ARC into the project instead of referencing it')
     ap.add_argument('--update-scripts', action='store_true', help='existing game: rewrite build.bat/build.sh (keeps *.old)')
+    ap.add_argument('--add-mcp', action='store_true', help='existing game: write .mcp.json for ARC\'s MCP server (0.10.10)')
     ap.add_argument('--name', default=None, help='executable name (default: from the folder name, or the old build.bat)')
     ap.add_argument('--web-packs', default=None, help='folders of assets/ the web build fetches on demand ("levels music", "*"; ARC 0.8.6)')
     a = ap.parse_args()
@@ -324,6 +349,7 @@ def main():
     if a.template and a.cpp: sys.exit('--template games are C (rename main.c to main.cpp yourself if you want C++)')
     dest = os.path.abspath(a.dest)
     if a.update_scripts: return update_scripts(dest, a)
+    if a.add_mcp: return add_mcp(dest)
     if os.path.exists(dest) and os.listdir(dest): sys.exit('destination exists and is not empty: ' + dest)
     name = a.name or ''.join(c for c in os.path.basename(dest).lower() if c.isalnum() or c in '_-') or 'game'
     title = a.title or os.path.basename(dest)
@@ -346,6 +372,7 @@ def main():
         arc_path = os.path.relpath(ARC_ROOT, dest) if os.path.splitdrive(ARC_ROOT)[0] == os.path.splitdrive(dest)[0] else ARC_ROOT
         arc_path = arc_path.replace('\\', '/')
     open(os.path.join(dest, 'arc.txt'), 'w', newline='\n').write(arc_path + '\n')
+    write_mcp(dest, arc_path)
     wp = a.web_packs or ''
     open(os.path.join(dest, 'build.bat'), 'w', newline='\r\n').write(BUILD_BAT.format(name=name, title=title, zipname=zipname(title), web_packs=wp))
     sh = os.path.join(dest, 'build.sh'); open(sh, 'w', newline='\n').write(BUILD_SH.format(name=name, title=title, zipname=zipname(title), web_packs=wp))

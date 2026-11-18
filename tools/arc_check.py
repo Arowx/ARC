@@ -20,6 +20,7 @@ The checks live in a fenced block marked arc-check (in a request .md, see docs/R
     expect game.restarted == true
     shot after.png                     any other agent command runs as it is (shot, compare REF.png 0.5, ...)
 
+An `exe` path is read from the current folder, else from the check file's folder (0.10.10).
 Paths: `dump.` (or a bare first name) reads the dump, `frame.` the frame description (the `frame` command), `ui` the
 widget list. `name[k=v]` keeps list items whose k equals v, `name[*]` all items, `name[N]` the Nth. When a path gives
 several values, == / contains / < ... pass if any value passes; `count(path)` is how many there are, `min(path)` /
@@ -237,6 +238,8 @@ def main():
             cmds.append(line); taken = None
             if word == 'sheet': snap_count['sheet'] += 1
     if not exe: sys.exit('arc_check: no game: give --exe or a `game` / `exe` line')
+    if not a.exe and not os.path.isabs(exe) and not os.path.exists(exe) and not os.path.exists(exe + '.exe'):
+        exe = os.path.join(os.path.dirname(os.path.abspath(a.checks)), exe)   # 0.10.10: relative to the check file
     exe = os.path.abspath(exe)
     if not os.path.exists(exe) and os.path.exists(exe + '.exe'): exe += '.exe'
     if not os.path.exists(exe): sys.exit('arc_check: no such game: ' + exe)

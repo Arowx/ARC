@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "arc": {
+      "command": "python",
+      "args": [
+        "tools/arc_mcp.py",
+        "--game",
+        "."
+      ]
+    }
+  }
+}
