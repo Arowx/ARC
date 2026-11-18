@@ -98,3 +98,34 @@ In words:
   version note reads "0.10.8".
 - **6:** with a level file open in the editor, `editor rename Cargo Hold` gives `editor.layer_name == "Cargo Hold"` in
   the dump, and so does `editor rename "Cargo Hold"`.
+
+## Done in ARC 0.10.9
+
+All six are in. Each workaround can come out:
+
+1. **Look-ahead past unmounted packs.** Your fix: `load_ahead` stops at any pack item. The self-test
+   (`tests/test_v109.c`) queues six meshes from two packs, A B A B A B, with B downloading in one poll and A in six.
+   All six load, with none failed; on 0.10.8 three failed. *Workaround to remove:* fetching every pack in a group
+   before queuing the models.
+2. **The hint.** A load queued with `arc_load_begin` / `arc_load_end` from `tick()` no longer asks for "loaded during
+   tick()". A plain load from `tick()` still does, and the "loaded N times" hint is unchanged. The self-test checks
+   both.
+3. **`arc_pack_fetch` without a manifest** is done at once and fetches nothing (no 404s), as on desktop. *Workaround
+   to remove:* the `arc_packs.txt` check.
+4. **New `arc_file_listed(path)`**: true when the file is in the assets or in a pack named by `arc_packs.txt` that has
+   not failed. `arc_file_exists` is unchanged (true only once the pack is in). Use `arc_file_listed` for the optional
+   lower-detail copies. `ARC_HAS_FILE_LISTED` (1009) marks it.
+5. **Doctor:**
+   - The asset scan reads the comment-stripped code.
+   - It skips `arc_packs.txt` and the `.arcpak` names of `WEB_PACKS` (read from build.bat / build.sh).
+   - It skips names passed to `arc_screenshot`, `arc_screenshot_after_frame`, `arc_image_save_png`, `arc_file_write`,
+     `arc_level_save` and `arc_save_write`, and to `fopen` with "w" or "a".
+   - A line containing `doctor: not an asset` is skipped.
+   - The version note prints `0.10.8` (and `0.10.6`, not `0.0.6`).
+   - ARC's doctor fixture (`tests/doctor_fixture/src/web.c`) has each of your cases; both build scripts check none is
+     reported. *Workaround to remove:* the split literals and the reworded comment.
+6. **Quoted words.** `editor rename Cargo Hold` and `editor rename "Cargo Hold"` both name the layer "Cargo Hold".
+   - Every agent command now honours "double quotes": a quoted run is one word, and the quotes are dropped.
+   - `editor setting KEY VALUE` takes every word after the key, too.
+   - `type` still takes the raw rest of the line.
+   - `tests/level_check.md` checks both forms (43/43).

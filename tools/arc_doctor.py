@@ -8,7 +8,9 @@ Looks at the game's sources (src/, or the folder itself; ARC's own copy in arc/ 
 scripts:
   - determinism: rand(), srand(), time(), clock() and friends in game code (replays, tests and multiplayer drift);
   - testability: an arc_app without .dump, files loaded inside tick()/draw();
-  - assets: files named in the code that don't exist, very large textures and sounds, uncompressed WAV music;
+  - assets: files named in the code that don't exist, very large textures and sounds, uncompressed WAV music (names in
+    comments, files the game writes - arc_screenshot, arc_file_write, fopen(..., "w") - arc_packs.txt and the game's
+    WEB_PACKS .arcpak files are not looked for; nor a line with the comment "doctor: not an asset");
   - the project: build scripts, AGENTS.md, which ARC it uses (arc.txt) and whether a vendored copy is older.
 Exit code 1 when there is an ERROR (WARN and INFO don't fail).
 """
@@ -56,6 +58,25 @@ def image_size(path):
     return None
 
 
+def ver_text(n):   # ARC_VERSION_NUM: major * 10000 + minor * 100 + patch (1008 = 0.10.8)
+    return '%d.%d.%d' % (n // 10000, n // 100 % 100, n % 100)
+
+
+# 0.10.9 names in the code that are not assets to look for: what the game writes (a screenshot, a save), and web-only files
+WRITES = re.compile(r'\b(?:arc_screenshot|arc_screenshot_after_frame|arc_image_save_png|arc_file_write|arc_level_save|arc_save_write)\s*\(\s*"([^"\n]+)"')
+FOPEN_W = re.compile(r'\bfopen\s*\(\s*"([^"\n]+)"\s*,\s*"[wa]')
+
+
+def web_packs(root):   # the .arcpak names of the game's WEB_PACKS (build.bat / build.sh), made only by web builds
+    names = set()
+    for f in ('build.bat', 'build.sh'):
+        try: text = open(os.path.join(root, f), encoding='utf-8', errors='replace').read()
+        except OSError: continue
+        for m in re.finditer(r'WEB_PACKS\s*=\s*"?([^"\r\n]*)', text):
+            names.update(w.strip() + '.arcpak' for w in re.split(r'[\s,;]+', m.group(1)) if w.strip() and not w.startswith(('%', '$')))
+    return names
+
+
 def strip_comments(code):
     code = re.sub(r'/\*.*?\*/', lambda m: '\n' * m.group(0).count('\n'), code, flags=re.S)
     return re.sub(r'//[^\n]*', '', code)
@@ -89,7 +110,7 @@ def main():
         srcs += [os.path.join(d, f) for f in files if f.endswith(SRC_EXT)]
     if not srcs: add('ERROR', root, 'no C/C++ sources found', 'put the game in src/main.c (tools/new_game.py makes a working project)')
     app_found = dump_found = False; immediate = False
-    named_assets = {}
+    named_assets = {}; written = set(); packs = web_packs(root)
     for p in srcs:
         rel = os.path.relpath(p, root)
         raw = open(p, encoding='utf-8', errors='replace').read()
@@ -111,8 +132,12 @@ def main():
             if name in ('tick', 'update') and not immediate and re.search(r'arc_draw_\w+\s*\(', body):
                 add('WARN', '%s:%d' % (rel, line), 'arc_draw_* inside %s(): nothing drawn there shows (each frame\'s draw list starts empty)' % name,
                     'draw in draw(), or set .immediate = true in arc_app to draw from tick()')
-        for m in re.finditer(r'"([^"\n]+\.(?:%s))"' % '|'.join(e[1:] for e in ASSET_EXT), raw, re.I):
-            named_assets.setdefault(m.group(1), '%s:%d' % (rel, raw.count('\n', 0, m.start()) + 1))
+        written.update(m.group(1) for m in WRITES.finditer(code)); written.update(m.group(1) for m in FOPEN_W.finditer(code))
+        raw_lines = raw.split('\n')
+        for m in re.finditer(r'"([^"\n]+\.(?:%s))"' % '|'.join(e[1:] for e in ASSET_EXT), code, re.I):   # (not in comments: 0.10.9)
+            line = code.count('\n', 0, m.start()) + 1
+            if line - 1 < len(raw_lines) and 'doctor: not an asset' in raw_lines[line - 1]: continue
+            named_assets.setdefault(m.group(1), '%s:%d' % (rel, line))
     if srcs and not app_found: add('INFO', root, 'no arc_app with .tick/.draw found (maybe built some other way)')
     if app_found and not dump_found:
         add('ERROR', root, 'the arc_app has no .dump: agents and tests can only check what the dump holds',
@@ -121,6 +146,8 @@ def main():
     # assets named in the code
     for name, where in sorted(named_assets.items()):
         if '%' in name or '*' in name: continue
+        base = os.path.basename(name)
+        if name in written or base == 'arc_packs.txt' or base in packs: continue   # written by the game, or made by a web build
         cands = [os.path.join(root, name), os.path.join(root, 'assets', name), os.path.join(root, 'build', name)]
         if not any(os.path.exists(c) for c in cands):
             add('ERROR', where, 'asset "%s" not found (looked in the game folder and assets/)' % name, 'add the file to assets/ or fix the name (paths are relative to assets/ at run time)')
@@ -155,7 +182,7 @@ def main():
         mine = arc_version(os.path.join(ARC_ROOT, 'include', 'arc.h')); theirs = arc_version(os.path.join(arc_dir, 'include', 'arc.h'))
         if theirs is None: add('ERROR', 'arc.txt', 'arc.txt points at %s, which has no include/arc.h' % arc_dir, 'write the path of the ARC folder in arc.txt')
         elif mine and theirs < mine and os.path.abspath(arc_dir) != ARC_ROOT:
-            add('INFO', 'arc.txt', 'the game uses ARC %d.%d.%d (vendored or another copy); this ARC is %d.%d.%d' % (theirs // 100 // 10 % 10, theirs // 10 % 10, theirs % 10, mine // 100 // 10 % 10, mine // 10 % 10, mine % 10),
+            add('INFO', 'arc.txt', 'the game uses ARC %s (vendored or another copy); this ARC is %s' % (ver_text(theirs), ver_text(mine)),
                 'to update a vendored copy: python tools/new_game.py %s --vendor (or point arc.txt at this ARC)' % root)
     else:
         add('INFO', root, 'no arc.txt (the build scripts made by tools/new_game.py read ARC\'s location from it)')

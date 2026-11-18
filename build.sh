@@ -75,12 +75,13 @@ case "$target" in
             python3 tools/arc_check.py tests/card_check.md --exe build/review_headless > build/card_check.txt || { cat build/card_check.txt; exit 1; }; tail -1 build/card_check.txt   # 0.10.6 landscape card, SDF UI font
             ${CC:-cc} $CFLAGS -D_GNU_SOURCE -DARC_HEADLESS_ONLY tests/target_game.c src/arc.c -o build/target_headless -lm   # 0.10.7 frame lists render targets' contents
             python3 tools/arc_check.py tests/target_check.md --exe build/target_headless > build/target_check.txt || { cat build/target_check.txt; exit 1; }; tail -1 build/target_check.txt
+            python3 tools/arc_check.py tests/target_immediate_check.md --exe build/target_headless > build/target_immediate_check.txt || { cat build/target_immediate_check.txt; exit 1; }; tail -1 build/target_immediate_check.txt
             ${CC:-cc} $CFLAGS -D_GNU_SOURCE -DARC_HEADLESS_ONLY tests/level_game.c src/arc.c -o build/level_headless -lm   # 0.10.8 level files, the deck editor
             python3 tools/arc_check.py tests/level_check.md --exe build/level_headless > build/level_check.txt || { cat build/level_check.txt; exit 1; }; tail -1 build/level_check.txt
             python3 tools/arc_check.py tests/level_launch_check.md --exe build/level_headless > build/level_launch_check.txt || { cat build/level_launch_check.txt; exit 1; }; tail -1 build/level_launch_check.txt
             ${CC:-cc} $CFLAGS -D_GNU_SOURCE -DARC_HEADLESS_ONLY tests/split_game.c src/arc.c -o build/split_headless -lm   # 0.10.2 split-screen viewports
             python3 tools/arc_check.py tests/split_check.md --exe build/split_headless > build/split_check.txt || { cat build/split_check.txt; exit 1; }; tail -1 build/split_check.txt
-            python3 tools/arc_doctor.py tests/doctor_fixture > build/doctor.txt || true; grep -q 'asset "missing.png" not found' build/doctor.txt && grep -q 'rand() in game code' build/doctor.txt && grep -q 'inside tick()' build/doctor.txt && echo "ARC ok doctor" || { echo "ARC error doctor"; cat build/doctor.txt; exit 1; }
+            python3 tools/arc_doctor.py tests/doctor_fixture > build/doctor.txt || true; grep -q 'asset "missing.png" not found' build/doctor.txt && grep -q 'rand() in game code' build/doctor.txt && grep -q 'inside tick()' build/doctor.txt && ! grep -qE 'comment_only|arc_packs.txt|lvl.arcpak|view.png|notes_out|made_at_run_time' build/doctor.txt && grep -q 'uses ARC 0.10.6' build/doctor.txt && echo "ARC ok doctor" || { echo "ARC error doctor"; cat build/doctor.txt; exit 1; }
             python3 tools/gen_api_docs.py --check   # docs/API.md, docs/QUICK.md and docs/api/*.md match include/arc.h
             python3 -c "import re;s=open('docs/QUICK.md').read();open('build/quick_example.c','w').write(re.search(r'\`\`\`c\n(.*?)\`\`\`',s,re.S).group(1))"
             ${CC:-cc} $CFLAGS -D_GNU_SOURCE -DARC_HEADLESS_ONLY -Iinclude build/quick_example.c src/arc.c -o build/quick_example -lm

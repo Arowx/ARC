@@ -160,7 +160,7 @@ static void load_ahead(double t0, double budget) {
     int started = 0;
     for (int i = LQ.next_fin; i < LQ.count && i < LQ.next_fin + ARC__LOAD_AHEAD; i++) {
         load_item *it = LQ.items[i];
-        if (it->kind == ARC__LOAD_PACK && it->state != 2) break;      /* what follows may be inside it */
+        if (it->kind == ARC__LOAD_PACK) break;   /* what follows may be inside it: a pack is only mounted when it is finished, in queue order (0.10.9: not when its download is done) */
         if (it->state != 0 || (it->kind != ARC__LOAD_TEXTURE && it->kind != ARC__LOAD_MESH)) continue;
         if (LQ.web_jobs >= ARC__LOAD_WEB_JOBS) break;
         if (started && arc_real_time() - t0 >= budget) break;          /* at least one a frame */

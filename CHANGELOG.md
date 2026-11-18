@@ -2,6 +2,33 @@
 
 Version numbers follow `ARC_VERSION` in `include/arc.h`. Games can check it at compile time.
 
+## 0.10.9 — 17 Nov 2026: `frame` in immediate mode, web loading fixes
+
+Self-test 2647 (6 new). Pictures unchanged. New acceptance check `tests/target_immediate_check.md` (12 checks, the
+target checks on `tests/target_game.c --immediate`); `tests/level_check.md` has 43 (renames with spaces). From
+Moonbase's and Droids' requests.
+
+- **`frame` in immediate mode**: games with `arc_app.immediate` draw from `tick()`, and `frame` listed only what was
+  drawn while it ran, so markers, labels, texts and the meshes drawn into render targets were missing or empty. ARC
+  now records every immediate tick (and the ticks re-run by `seek` / `rewind`) and `frame` lists that tick's drawing,
+  render targets included (`target`, `target_box`, `frame.targets`), the same as for games with `draw()`.
+- **Packs fetched together load together**: files from two packs queued in one group, interleaved, with the second
+  pack's download finishing first, failed with "cannot load" for some of the first pack's files. Look-ahead now
+  stops at a pack that is not mounted yet.
+- **No "loaded during tick()" hint for queued loads**: a load inside `arc_load_begin` / `arc_load_end` from `tick()`
+  is the intended way to stream, so it no longer asks for the hint.
+- **`arc_pack_fetch` in a web build without packs** (no `arc_packs.txt`) is done at once and fetches nothing, as on
+  desktop, instead of requesting a pack file that does not exist.
+- **`arc_file_listed(path)`**: true when a file is in the assets or in a web pack that can still be fetched (listed in
+  `arc_packs.txt` and not failed). Use it for "is this level there?" before queuing it; `arc_file_exists` is only true
+  once the pack is in.
+- **Doctor false alarms**: names the game writes (`arc_screenshot`, `arc_image_save_png`, `arc_file_write`,
+  `arc_level_save`, `arc_save_write`, `fopen(.., "w")`), names in comments, `arc_packs.txt` and the `.arcpak` files of
+  `WEB_PACKS` are no longer reported as missing assets; a line with `doctor: not an asset` is skipped. The version
+  note prints `0.10.6`, not `1006`.
+- **Quoted words in commands**: `editor rename "Cargo Hold"` (or `editor rename Cargo Hold`, every word after it) and
+  `editor setting title "Deck One"`; any agent command can keep spaces inside "double quotes". `type` is unchanged.
+
 ## 0.10.8 — 16 Nov 2026: level files and a full deck editor
 
 Self-test 2641 (27 new). Picture look 28 (the editor in a small window) changed: the panel has a Select tool and a Test button. New acceptance checks `tests/level_check.md` (40 checks) and `tests/level_launch_check.md`

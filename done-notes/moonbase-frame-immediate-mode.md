@@ -36,3 +36,19 @@ expect frame.meshes[name=trooper].items[0].on_screen_box != false
 ```
 
 Until then the game counts what it drew itself (`game.drawn3d.engaged`), and its tests read that.
+
+## Done in ARC 0.10.9
+
+ARC took the first option: in immediate mode it records every tick. Markers, labels, texts, sprites, rects, target
+passes and blits to the screen are all kept with the frame, and `frame` reports the frame it replays. The re-run ticks
+of `seek` and `rewind` record too. Games with `draw()` behave as before.
+
+- Your check should pass as written: `shape=ring` is the right spelling (marker shapes are names), and
+  `frame.markers[label=!].target == "map"`, `frame.texts[*].text contains "!"` and the trooper's `on_screen_box` all
+  come from the recorded tick now.
+- ARC's own copy of your case is `tests/target_immediate_check.md`. It runs the 0.10.7 target test game
+  (`tests/target_game.c --immediate`), which draws a target in `tick()` and blits it with `arc_draw_texture_ex`. It has
+  a ring marker labelled "!", a text inside the target and HUD text. 12/12 checks pass; on 0.10.8 it passed 5/12, the
+  same symptoms you saw.
+- Once your check passes, `game.drawn3d.engaged` and the tests that read it can come out.
+- `ARC_HAS_IMMEDIATE_FRAME` (1009) marks it.

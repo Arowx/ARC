@@ -93,7 +93,13 @@ float arc_rng_rangef(arc_rng *r, float lo, float hi) { return lo + (hi - lo) * a
 
 /* 0.9.0 hints: one-time `ARC hint` lines that name a likely mistake and its fix (see AGENTS.md "Hints") */
 int arc__phase;   /* ARC__PHASE_*: which game callback is running */
+static struct { char key[48]; int n; } g_hint_calls[32];   /* 0.10.9: how often each hint was asked for (for the self-test) */
+int arc__hint_count(const char *key) { for (int i = 0; i < 32; i++) if (g_hint_calls[i].key[0] && !strcmp(g_hint_calls[i].key, key)) return g_hint_calls[i].n; return 0; }
 void arc__hint(const char *key, const char *fmt, ...) {
+    for (int i = 0; i < 32; i++) {
+        if (!g_hint_calls[i].key[0]) { snprintf(g_hint_calls[i].key, sizeof g_hint_calls[i].key, "%s", key); g_hint_calls[i].n = 1; break; }
+        if (!strcmp(g_hint_calls[i].key, key)) { g_hint_calls[i].n++; break; }
+    }
     static char seen[64][48]; static int n;
     for (int i = 0; i < n; i++) if (!strcmp(seen[i], key)) return;
     if (n < 64) { strncpy(seen[n], key, 47); seen[n][47] = 0; n++; }
@@ -1522,9 +1528,9 @@ static void resim_to(uint64_t target) {
     g_resim = true; arc__audio_silent = true;
     while (G.ticks < target && G.ticks < g_hist_len) {
         g_prev = g_cur; g_cur = g_hist[G.ticks];
-        if (imm) arc__gfx_begin();
+        if (imm) { arc__gfx_begin(); arc__frame_record(true); }
         sim_tick_body(imm);
-        if (imm) arc__gfx_end_offscreen();
+        if (imm) { arc__frame_keep(); arc__gfx_end_offscreen(); }
         G.ticks++;
         auto_state_maybe();
     }
@@ -1539,9 +1545,9 @@ static bool rb_eng_restore(const uint8_t *data, size_t size) {
 static void rb_eng_resim_tick(void) {          /* (g_resim is set by the caller) */
     bool imm = G.app.immediate;
     g_prev = g_cur; if (G.ticks < g_hist_len) g_cur = g_hist[G.ticks];
-    if (imm) arc__gfx_begin();
+    if (imm) { arc__gfx_begin(); arc__frame_record(true); }
     sim_tick_body(imm);
-    if (imm) arc__gfx_end_offscreen();
+    if (imm) { arc__frame_keep(); arc__gfx_end_offscreen(); }
     G.ticks++;
 }
 static bool seek_to(uint64_t target, char *err, size_t errn) {
@@ -1885,9 +1891,16 @@ static bool run_command(const char *line) {
     if (len >= sizeof buf) { printf("ARC error command is longer than %d characters, not run: %.40s...\n", ARC__CMD_CHARS - 1, line); fflush(stdout); return false; }
     memcpy(buf, line, len + 1);
     const char *argv[ARC__CMD_WORDS]; int argc = 0;
-    for (char *p = strtok(buf, " \t"); p; p = strtok(NULL, " \t")) {
+    /* words split at spaces and tabs; 0.10.9: "double quotes" keep spaces inside one word (the quotes are dropped:
+       editor rename "Cargo Hold", editor object add 3 3 droid note="a repair droid") */
+    for (char *r = buf, *w = buf; *r;) {
+        while (*r == ' ' || *r == '\t') r++;
+        if (!*r) break;
         if (argc == ARC__CMD_WORDS) { printf("ARC error command has more than %d words, not run: %s ...\n", ARC__CMD_WORDS, argv[0]); fflush(stdout); return false; }
-        argv[argc++] = p;
+        char *word = w; bool q = false;
+        for (; *r && (q || (*r != ' ' && *r != '\t')); r++) { if (*r == '"') q = !q; else *w++ = *r; }
+        if (*r) r++;
+        *w++ = 0; argv[argc++] = word;
     }
     if (!argc) return false;
     const char *c = argv[0];
@@ -1938,9 +1951,11 @@ static bool run_command(const char *line) {
     }
     if (!strcmp(c, "ui")) { arc__ui_print(); return false; }
     if (!strcmp(c, "frame")) {   /* 0.9.0: what the frame shows, as text (see AGENTS.md) */
-        arc__frame_record(true); bool ok = render_now(); arc_json j; memset(&j, 0, sizeof j);
+        /* immediate mode: the last tick recorded its frame as it drew it (0.10.9); else record while drawing it now */
+        if (!G.app.immediate) arc__frame_record(true);
+        bool ok = render_now(); arc_json j; memset(&j, 0, sizeof j);
         if (ok) arc__frame_json(&j);
-        arc__frame_record(false);
+        if (G.app.immediate) arc__frame_keep(); else arc__frame_record(false);
         if (!ok) printf("ARC error frame nothing to draw\n");
         else if (argc > 1) { if (arc_file_write(argv[1], j.buf, j.len)) printf("ARC ok frame %s\n", argv[1]); else printf("ARC error frame cannot write %s\n", argv[1]); }
         else printf("ARC frame %s\n", j.buf ? j.buf : "{}");
@@ -2470,9 +2485,10 @@ bool arc__frame(void) {
         }
         build_snapshot();
         if (rb) arc__rb_new_tick();
-        if (imm) { if (imm_open) { if (draw_wanted_now()) arc__gfx_end_offscreen(); else arc__gfx_end(false); } arc__gfx_begin(); imm_open = true; }
+        if (imm) { if (imm_open) { if (draw_wanted_now()) arc__gfx_end_offscreen(); else arc__gfx_end(false); } arc__gfx_begin(); imm_open = true; arc__frame_record(true); }   /* 0.10.9: recorded for `frame` */
         double t0 = G.plat->time();
         sim_tick_body(imm);
+        if (imm) arc__frame_keep();
         G.tick_ms = (float)((G.plat->time() - t0) * 1000.0);
         BG.tick += G.tick_ms;
         arc__gfx_count_tick_ms(G.tick_ms);

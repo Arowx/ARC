@@ -33,6 +33,12 @@ expect editor.objects[1].kind == "camera"
 # the layer's name and settings
 do editor rename Bridge; editor setting music deck1.ogg; step 1
 expect editor.layer_name == "Bridge"
+do editor rename Cargo Hold; step 1
+expect editor.layer_name == "Cargo Hold"
+do editor rename "Engineering Bay"; step 1
+expect editor.layer_name == "Engineering Bay"
+do editor rename Bridge; step 1
+expect editor.layer_name == "Bridge"
 expect editor.settings.music == "deck1.ogg"
 do editor save; reread; step 1
 expect game.file_objects == 2
