@@ -804,6 +804,69 @@ static void snap_pads(arc__input_snap *s) {
     }
 }
 void arc__input_touch_mode(bool on) { if (on) g_raw.flags |= ARC__IN_TOUCH; else g_raw.flags &= (uint8_t)~ARC__IN_TOUCH; }
+/* ---- 0.10.11 multi-touch. Platforms report each finger by their own id; here it gets a small one (the lowest free,
+   not used by a finger of the last tick either, so a lifted finger's id is never re-pressed in the same tick's list).
+   A finger lifted before any tick saw it stays for one tick (as a key latch does). ---- */
+static struct { long long pid; bool seen, up; } g_rt[ARC_TOUCH_MAX];
+static int16_t touch_px(float v) { return (int16_t)arc_clampf(floorf(v + 0.5f), -32768.0f, 32767.0f); }
+static int touch_free_id(const arc__input_snap *a, const arc__input_snap *b) {
+    for (int id = 0; id < 255; id++) {
+        bool used = false;
+        for (int i = 0; i < a->tcount && !used; i++) used = a->touch[i].id == id;
+        for (int i = 0; b && i < b->tcount && !used; i++) used = b->touch[i].id == id;
+        if (!used) return id;
+    }
+    return 255;
+}
+static void touch_remove(arc__input_snap *s, int i, bool raw) {
+    for (int k = i; k + 1 < s->tcount; k++) { s->touch[k] = s->touch[k + 1]; if (raw) g_rt[k] = g_rt[k + 1]; }
+    s->tcount--;
+}
+void arc__input_touch(long long finger, int phase, float x, float y) {
+    int at = -1; for (int i = 0; i < g_raw.tcount; i++) if (g_rt[i].pid == finger && !g_rt[i].up) { at = i; break; }
+    if (phase == 0 && at < 0) {
+        if (g_raw.tcount >= ARC_TOUCH_MAX) return;
+        uint8_t id = (uint8_t)touch_free_id(&g_raw, &g_cur);
+        int i = g_raw.tcount++;
+        g_raw.touch[i].id = id; g_raw.touch[i].pad = 0;
+        g_raw.touch[i].x = g_raw.touch[i].sx = touch_px(x); g_raw.touch[i].y = g_raw.touch[i].sy = touch_px(y);
+        g_rt[i].pid = finger; g_rt[i].seen = false; g_rt[i].up = false;
+        g_raw.flags |= ARC__IN_TOUCH;
+        return;
+    }
+    if (at < 0) return;
+    g_raw.touch[at].x = touch_px(x); g_raw.touch[at].y = touch_px(y);
+    if (phase == 2) { if (g_rt[at].seen) touch_remove(&g_raw, at, true); else g_rt[at].up = true; }
+}
+static void touch_raw_seen(void) {   /* after a tick took the raw list: fingers lifted meanwhile go now */
+    for (int i = 0; i < g_raw.tcount; i++) g_rt[i].seen = true;
+    for (int i = g_raw.tcount - 1; i >= 0; i--) if (g_rt[i].up) touch_remove(&g_raw, i, true);
+}
+static int g_vfirst = -1;   /* the scripted finger driving the mouse */
+/* the view the game reads: this tick's fingers (pressed when new), then last tick's fingers now gone (released) */
+static arc_touch g_tv[ARC_TOUCH_MAX * 2]; static int g_tvn; static arc__input_snap g_tv_cur, g_tv_prev; static bool g_tv_ok;
+static void touch_view(void) {
+    if (g_tv_ok && g_tv_cur.tcount == g_cur.tcount && g_tv_prev.tcount == g_prev.tcount &&
+        !memcmp(g_tv_cur.touch, g_cur.touch, sizeof g_cur.touch) && !memcmp(g_tv_prev.touch, g_prev.touch, sizeof g_prev.touch)) return;
+    g_tv_ok = true; g_tv_cur.tcount = g_cur.tcount; g_tv_prev.tcount = g_prev.tcount;
+    memcpy(g_tv_cur.touch, g_cur.touch, sizeof g_cur.touch); memcpy(g_tv_prev.touch, g_prev.touch, sizeof g_prev.touch);
+    g_tvn = 0;
+    for (int i = 0; i < g_cur.tcount && i < ARC_TOUCH_MAX; i++) {
+        arc_touch *t = &g_tv[g_tvn++]; memset(t, 0, sizeof *t);
+        t->id = g_cur.touch[i].id; t->x = g_cur.touch[i].x; t->y = g_cur.touch[i].y; t->start_x = g_cur.touch[i].sx; t->start_y = g_cur.touch[i].sy;
+        t->pressed = true; for (int k = 0; k < g_prev.tcount && k < ARC_TOUCH_MAX; k++) if (g_prev.touch[k].id == g_cur.touch[i].id) t->pressed = false;
+    }
+    for (int k = 0; k < g_prev.tcount && k < ARC_TOUCH_MAX; k++) {
+        bool still = false; for (int i = 0; i < g_cur.tcount && i < ARC_TOUCH_MAX; i++) still = still || g_cur.touch[i].id == g_prev.touch[k].id;
+        if (still) continue;
+        arc_touch *t = &g_tv[g_tvn++]; memset(t, 0, sizeof *t);
+        t->id = g_prev.touch[k].id; t->x = g_prev.touch[k].x; t->y = g_prev.touch[k].y; t->start_x = g_prev.touch[k].sx; t->start_y = g_prev.touch[k].sy;
+        t->released = true;
+    }
+}
+int arc_touch_count(void) { touch_view(); return g_tvn; }
+const arc_touch *arc_touch_get(int i) { touch_view(); return i >= 0 && i < g_tvn ? &g_tv[i] : NULL; }
+const arc_touch *arc_touch_find(int id) { touch_view(); for (int i = 0; i < g_tvn; i++) if (g_tv[i].id == id) return &g_tv[i]; return NULL; }
 void arc__input_mouse(float x, float y) { g_raw.mx = x; g_raw.my = y; }
 void arc__input_mouse_rel(float dx, float dy) { g_raw.mx += dx; g_raw.my += dy; }
 /* 0.6.7 mouse look. Headless (no platform support): captured as asked, and `mouse X Y` moves it, so tests run */
@@ -818,8 +881,9 @@ void arc__input_wheel(float steps) { g_raw_wheel += steps; }
 void arc__input_clear(void) { memset(g_raw.keys, 0, sizeof g_raw.keys); memset(g_latch, 0, sizeof g_latch); }
 /* self-tests: make the platform's input now the current tick's (as a tick would; not recorded), so a test can drive
    the UI hooks (arc__ui_tick_begin/end) through several pretend ticks without running the main loop */
+static void touch_raw_seen(void);
 void arc__input_test_step(void) {
-    g_prev = g_cur; arc__input_snap s = g_raw;
+    g_prev = g_cur; arc__input_snap s = g_raw; touch_raw_seen();
     for (int i = 0; i < (int)sizeof s.keys; i++) { s.keys[i] |= g_latch[i]; g_latch[i] = 0; }
     memset(s.text, 0, sizeof s.text);
     size_t tl = strlen(g_text); if (tl >= sizeof s.text) tl = sizeof s.text - 1;   /* 0.8.5: text typed with arc__input_char, as a real frame does */
@@ -1059,8 +1123,9 @@ static void prof_roll(void) {
  * changes, then { u32 0xFFFFFFFF; u32 total_ticks }. Version 3 snap = arc__input_snap (keys, mouse, wheel,
  * gamepad axes, flags, typed text, and 0.10.5 every pad). Version 2 (one pad) is read too: its snaps are the start of
  * a version 3 one, and its pad becomes pad 0. */
-#define ARC__REC_VERSION 3u
+#define ARC__REC_VERSION 4u
 #define ARC__SNAP_V2 offsetof(arc__input_snap, padmask)
+#define ARC__SNAP_V3 offsetof(arc__input_snap, tcount)   /* 0.10.11: version 4 adds the touches */
 static FILE *g_rec_file;
 static arc__input_snap g_rec_last; static bool g_rec_any;
 static uint8_t *g_replay; static size_t g_replay_size, g_replay_pos; static bool g_replaying;
@@ -1068,20 +1133,23 @@ static uint32_t g_replay_total; static arc__input_snap g_replay_snap;
 static uint64_t g_replay_len;      /* 0.7.2: the replay's length in ticks, read at open (for the timeline) */
 static uint64_t g_rec_next;        /* 0.7.2: ticks written to the recording so far (going back never re-records them) */
 
-/* 0.10.5 a version 2 replay as version 3: every snap widened (its one pad becomes pad 0); the header keeps version 2 */
+/* 0.10.5 an older replay as the current version: every snap widened. Version 2: its one pad becomes pad 0; version 3
+   (0.10.11): no touches. The header keeps its version. */
 uint8_t *arc__replay_widen(const uint8_t *d, size_t size, size_t *out) {
-    size_t cap = 20 + (size / (4 + ARC__SNAP_V2) + 2) * (4 + sizeof(arc__input_snap)) + 8, o = 20, pos = 20;
+    uint32_t ver = 2; if (size >= 8) memcpy(&ver, d + 4, 4);
+    size_t old = ver == 3u ? ARC__SNAP_V3 : ARC__SNAP_V2;
+    size_t cap = 20 + (size / (4 + old) + 2) * (4 + sizeof(arc__input_snap)) + 8, o = 20, pos = 20;
     uint8_t *nb = (uint8_t *)arc__xalloc(cap); memcpy(nb, d, 20);
     while (pos + 4 <= size) {
         uint32_t t; memcpy(&t, d + pos, 4);
         if (t == 0xFFFFFFFFu) { size_t k = pos + 8 <= size ? 8 : 4; memcpy(nb + o, d + pos, k); o += k; break; }
-        if (pos + 4 + ARC__SNAP_V2 > size) break;
-        arc__input_snap sn; memset(&sn, 0, sizeof sn); memcpy(&sn, d + pos + 4, ARC__SNAP_V2);
-        if (sn.flags & ARC__IN_PAD) {
+        if (pos + 4 + old > size) break;
+        arc__input_snap sn; memset(&sn, 0, sizeof sn); memcpy(&sn, d + pos + 4, old);
+        if (ver == 2u && (sn.flags & ARC__IN_PAD)) {
             sn.padmask = 1; memcpy(sn.pax[0], sn.axes, sizeof sn.axes);
             for (int k = ARC_PAD_A; k <= ARC_PAD_GUIDE; k++) if (snap_get(&sn, k)) sn.pbtn[0] |= 1u << (k - ARC_PAD_A);
         }
-        memcpy(nb + o, &t, 4); memcpy(nb + o + 4, &sn, sizeof sn); o += 4 + sizeof sn; pos += 4 + ARC__SNAP_V2;
+        memcpy(nb + o, &t, 4); memcpy(nb + o + 4, &sn, sizeof sn); o += 4 + sizeof sn; pos += 4 + old;
     }
     *out = o; return nb;
 }
@@ -1091,8 +1159,8 @@ static bool replay_open(const char *path) {
     g_replay = (uint8_t *)arc__xalloc((size_t)n + 1); g_replay_size = fread(g_replay, 1, (size_t)n, f); fclose(f);
     if (g_replay_size < 20 || memcmp(g_replay, "ARCR", 4)) return false;
     uint32_t ver; memcpy(&ver, g_replay + 4, 4);
-    if (ver != ARC__REC_VERSION && ver != 2u) { printf("ARC error replay %s is version %u; this ARC reads versions 2 and %u\n", path, ver, ARC__REC_VERSION); return false; }
-    if (ver == 2u) { size_t n2 = 0; uint8_t *nb = arc__replay_widen(g_replay, g_replay_size, &n2); free(g_replay); g_replay = nb; g_replay_size = n2; }   /* 0.10.5 */
+    if (ver != ARC__REC_VERSION && ver != 2u && ver != 3u) { printf("ARC error replay %s is version %u; this ARC reads versions 2 to %u\n", path, ver, ARC__REC_VERSION); return false; }
+    if (ver == 2u || ver == 3u) { size_t n2 = 0; uint8_t *nb = arc__replay_widen(g_replay, g_replay_size, &n2); free(g_replay); g_replay = nb; g_replay_size = n2; }   /* 0.10.5 */
     memcpy(&g_seed, g_replay + 8, 8);
     uint32_t hz; memcpy(&hz, g_replay + 16, 4); if (hz) G.tick_hz = (int)hz;
     g_replay_pos = 20; g_replaying = true; g_replay_total = 0xFFFFFFFFu;
@@ -1352,6 +1420,22 @@ static void write_dump(arc_json *j) {
         }
         arc_json_end(j);
     }
+    {   /* 0.10.11 the fingers this tick */
+        int n = arc_touch_count(), down = 0;
+        for (int i = 0; i < n; i++) down += !arc_touch_get(i)->released;
+        arc_json_obj_k(j, "input");
+        arc_json_int_k(j, "touches", down); arc_json_bool_k(j, "touch_mode", arc_touch_mode());
+        arc_json_arr_k(j, "touch");
+        for (int i = 0; i < n; i++) {
+            const arc_touch *t = arc_touch_get(i);
+            arc_json_obj(j); arc_json_int_k(j, "id", t->id); arc_json_num_k(j, "x", t->x); arc_json_num_k(j, "y", t->y);
+            arc_json_num_k(j, "start_x", t->start_x); arc_json_num_k(j, "start_y", t->start_y);
+            arc_json_bool_k(j, "pressed", t->pressed); arc_json_bool_k(j, "released", t->released);
+            arc_json_end(j);
+        }
+        arc_json_end(j);
+        arc_json_end(j);
+    }
     arc_gfx_stats st = arc_stats();
     arc_json_obj_k(j, "stats");
     arc_json_str_k(j, "backend", st.backend);
@@ -1412,6 +1496,7 @@ static void print_help(void) {
          "ARC help   mouse X Y               move the mouse (pixels); click [K] taps MOUSE_LEFT\n"
          "ARC help   tap PAD_A | axis LX 0.5  gamepad buttons and sticks (LX LY RX RY LT RT; axis LX 0 lets go)\n"
          "ARC help   type TEXT               typed text (arc_text_input) next tick;  touch on|off  finger mode\n"
+         "ARC help   touch down ID X Y / touch move ID X Y / touch up ID   fingers (multi-touch)\n"
          "ARC help   shot FILE.png           draw now and save a screenshot\n"
          "ARC help   dump [FILE.json]        engine + game state as JSON (stdout if no file)\n"
          "ARC help   reset / arc_reset       back to the state right after init (tick 0, vars and --set values); a game's own reset command wins, arc_reset is always ARC's\n"
@@ -1562,7 +1647,7 @@ static void do_reset(void) {
         arc__gfx_begin(); arc__phase = ARC__PHASE_INIT; G.app.init(); arc__phase = 0; arc__gfx_end_offscreen();
         ok = true; how_init = true;
     }
-    memset(&g_virtual, 0, sizeof g_virtual); memset(g_tap_ticks, 0, sizeof g_tap_ticks); g_mouse_virtual = false;
+    memset(&g_virtual, 0, sizeof g_virtual); memset(g_tap_ticks, 0, sizeof g_tap_ticks); g_mouse_virtual = false; g_vfirst = -1;
     memset(&g_cur, 0, sizeof g_cur); memset(&g_prev, 0, sizeof g_prev);
     g_wait_until = 0; g_hist_len = 0; auto_states_drop_after(0); G.acc = 0;
     if (ok) printf("ARC ok reset tick=%llu (%s)\n", (unsigned long long)G.ticks, how_init ? "init again" : "the state after init");
@@ -1993,7 +2078,30 @@ static bool run_command(const char *line) {
         return false;
     }
     if (!strcmp(c, "touch") && argc >= 2) {          /* touch on|off: report the pointer as a finger */
-        if (!strcmp(argv[1], "on")) g_virtual.flags |= ARC__IN_TOUCH; else g_virtual.flags &= (uint8_t)~ARC__IN_TOUCH;
+        const char *a = argv[1];
+        if (!strcmp(a, "down") || !strcmp(a, "move") || !strcmp(a, "up")) {   /* 0.10.11: touch down|move ID X Y, touch up ID */
+            if (argc < 3 || (strcmp(a, "up") && argc < 5)) { printf("ARC error touch: use 'touch down ID X Y', 'touch move ID X Y' or 'touch up ID'\n"); fflush(stdout); return false; }
+            int id = arc_clampi(atoi(argv[2]), 0, 254); float x = argc >= 5 ? (float)atof(argv[3]) : 0, y = argc >= 5 ? (float)atof(argv[4]) : 0;
+            int at = -1; for (int i = 0; i < g_virtual.tcount; i++) if (g_virtual.touch[i].id == id) at = i;
+            if (!strcmp(a, "up")) {
+                if (at < 0) { printf("ARC error touch up %d: no such finger down\n", id); fflush(stdout); return false; }
+                touch_remove(&g_virtual, at, false);
+                if (id == g_vfirst) { snap_set(&g_virtual, ARC_MOUSE_LEFT, false); g_vfirst = -1; }
+                return false;
+            }
+            if (at < 0 && !strcmp(a, "move")) { printf("ARC error touch move %d: no such finger down\n", id); fflush(stdout); return false; }
+            if (at < 0) {
+                if (g_virtual.tcount >= ARC_TOUCH_MAX) { printf("ARC error touch down: %d fingers already\n", ARC_TOUCH_MAX); fflush(stdout); return false; }
+                at = g_virtual.tcount++; g_virtual.touch[at].id = (uint8_t)id; g_virtual.touch[at].pad = 0;
+                g_virtual.touch[at].sx = touch_px(x); g_virtual.touch[at].sy = touch_px(y);
+                g_virtual.flags |= ARC__IN_TOUCH;
+                if (g_vfirst < 0) { g_vfirst = id; snap_set(&g_virtual, ARC_MOUSE_LEFT, true); }   /* the first finger is the mouse */
+            }
+            g_virtual.touch[at].x = touch_px(x); g_virtual.touch[at].y = touch_px(y);
+            if (id == g_vfirst) { g_virtual.mx = x; g_virtual.my = y; g_mouse_virtual = true; }
+            return false;
+        }
+        if (!strcmp(a, "on")) g_virtual.flags |= ARC__IN_TOUCH; else g_virtual.flags &= (uint8_t)~ARC__IN_TOUCH;
         return false;
     }
     if (!strcmp(c, "ui")) { arc__ui_print(); return false; }
@@ -2208,6 +2316,8 @@ static void build_snapshot(void) {
         if (g_mouse_virtual) { s.mx = g_virtual.mx; s.my = g_virtual.my; }
         for (int a = 0; a < ARC_AXIS_COUNT; a++) if (g_virtual.axes[a] != 0) s.axes[a] = g_virtual.axes[a];
         s.flags |= g_virtual.flags;
+        touch_raw_seen();   /* 0.10.11 */
+        if (g_virtual.tcount) { s.tcount = g_virtual.tcount; memcpy(s.touch, g_virtual.touch, sizeof s.touch); }
         snap_pads(&s);   /* 0.10.5 */
         s.wheel = g_raw_wheel; g_raw_wheel = 0;
         memset(s.text, 0, sizeof s.text);

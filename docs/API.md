@@ -377,6 +377,22 @@ Touch (web): the first finger drives the mouse and MOUSE_LEFT. True while the la
 ARC_API bool arc_touch_mode(void);
 ```
 
+Multi-touch (0.10.11): every finger, read in tick() like the keys, recorded and replayed like other input (web and
+   Windows touch screens; headless: `touch down ID X Y` / `touch move ID X Y` / `touch up ID`). id is small (0, 1, ...)
+   and stays while the finger is down; a lifted finger's id is reused. x, y are window pixels (as the mouse, before
+   viewports); start_x, start_y where it went down. A finger lifted this tick is still listed for this tick with
+   released set (at its last place), so `pressed` / `released` work like arc_key_pressed / _released, and a tap shorter
+   than a tick is still seen for one tick. The first finger still drives the mouse and MOUSE_LEFT. arc_ui buttons
+   answer any finger, so a thumb steering elsewhere doesn't block a tap. dump.input lists them.
+
+```c
+#define ARC_TOUCH_MAX 10
+typedef struct { int id; float x, y; float start_x, start_y; bool pressed; bool released; } arc_touch;
+ARC_API int arc_touch_count(void);    // fingers listed this tick (down, or lifted this tick)
+ARC_API const arc_touch *arc_touch_get(int i);    // NULL past the end; ordered by when they went down
+ARC_API const arc_touch *arc_touch_find(int id);    // NULL: no such finger this tick
+```
+
 ## Tunable variables (agents can list/set them: `vars`, `set name value`)
 
 
@@ -1241,6 +1257,24 @@ Depth offset for lines (0.6.2): lines drawn after this are pushed `fraction` fur
 
 ```c
 ARC_API void arc_set_line_depth_push(float fraction);
+```
+
+Thick and glowing lines (0.10.11). arc_set_line_width(px): 3D lines drawn after it are px pixels wide on the screen (or
+   render target), whatever their distance, with a soft one-pixel edge; 1 (the default) is the plain one-pixel line.
+   arc_set_line_glow(x): their colour is multiplied by x (1 = as given): above 1 they pass the bloom threshold of
+   arc_post's bloom and glow, like emissive meshes (1..64; affects thin lines too). arc_set_line_cap: the ends of thick
+   lines, 3D and 2D (square, the 3D default: half the width past each end; round; butt: stop at the end, the 2D
+   default). All three stay until changed. Thick lines are depth tested but write no depth, so they never hide each
+   other; frame.lines reports the frame's counts and widest width. arc_draw_lines: count points taken in pairs (a
+   ship's edges), each moved by model. The limit is 131,072 thin lines and about 9,000 thick ones a frame.
+
+```c
+typedef enum { ARC_LINE_CAP_SQUARE = 0, ARC_LINE_CAP_ROUND = 1, ARC_LINE_CAP_BUTT = 2 } arc_line_cap;
+ARC_API void arc_set_line_width(float pixels);
+ARC_API void arc_set_line_glow(float intensity);
+ARC_API void arc_set_line_cap(arc_line_cap cap);
+ARC_API float arc_line_width(void);
+ARC_API void arc_draw_lines(const arc_v3 *pts, int count, arc_m4 model, uint32_t rgb);
 ARC_API void arc_draw_box_lines(arc_v3 lo, arc_v3 hi, uint32_t rgb);
 ARC_API void arc_draw_grid(float half_size, float step, uint32_t rgb);
 ```
@@ -1250,7 +1284,7 @@ ARC_API void arc_draw_grid(float half_size, float step, uint32_t rgb);
 ```c
 ARC_API void arc_draw_rect(float x, float y, float w, float h, uint32_t argb_or_rgb);
 ARC_API void arc_draw_rect_lines(float x, float y, float w, float h, uint32_t rgb);
-ARC_API void arc_draw_line2d(float x0, float y0, float x1, float y1, float thickness, uint32_t rgb);
+ARC_API void arc_draw_line2d(float x0, float y0, float x1, float y1, float thickness, uint32_t rgb);    // 1.5 px and wider: soft edges (0.10.11)
 ```
 
 Nine-slice: the texture's corners (src_border texels square) drawn dst_border pixels square and unstretched,

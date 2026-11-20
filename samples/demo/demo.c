@@ -27,6 +27,7 @@ static struct {
 } G;
 
 static float v_speed, v_enemy_speed, v_fire_rate, v_bullet_speed, v_spawn_rate;
+static float v_line_test;   /* 0.10.11: 1 draws a few thick, glowing vector lines over the arena */
 
 static void reset(void) {
     for (int i = 0; i < G.enemies.cap; i++) if (arc_pool_alive(&G.enemies, i)) arc_pool_remove(&G.enemies, arc_pool_handle_at(&G.enemies, i));
@@ -57,6 +58,7 @@ static void init(void) {
     arc_var("fire.rate", &v_fire_rate, 9.0f);
     arc_var("bullet.speed", &v_bullet_speed, 30.0f);
     arc_var("spawn.rate", &v_spawn_rate, 6.0f);
+    arc_var("line_test", &v_line_test, 0.0f);
     arc_pool_make(&G.enemies, arc_perm(), enemy, MAX_ENEMIES);
     arc_pool_make(&G.bullets, arc_perm(), bullet, MAX_BULLETS);
     arc_pool_make(&G.particles, arc_perm(), particle, MAX_PARTICLES);
@@ -215,6 +217,14 @@ static void draw(float alpha) {
         particle *q = (particle *)arc_pool_at(&G.particles, i);
         float s = q->size * arc_clampf(q->life * 2, 0, 1);
         arc_draw_mesh_ex(G.shard, arc_m4_trs_y(q->pos, q->life * 8, arc_v3_make(s, s, s)), q->color, 0.8f);
+    }
+    if (v_line_test > 0.5f) {   /* 0.10.11: a vector-style wireframe, 4 pixels wide, glowing */
+        static const arc_v3 ship[] = { { 0, 0, -1.5f }, { 1, 0, 1 }, { 1, 0, 1 }, { 0, 0, 0.5f }, { 0, 0, 0.5f }, { -1, 0, 1 }, { -1, 0, 1 }, { 0, 0, -1.5f } };
+        arc_set_line_width(4.0f); arc_set_line_glow(2.5f); arc_set_line_cap(ARC_LINE_CAP_ROUND);
+        arc_draw_lines(ship, 8, arc_m4_trs_y(arc_v3_make(p.x - 4, 1.5f, p.z), 0.4f, arc_v3_make(2, 2, 2)), 0x40FFC0);
+        arc_draw_line(arc_v3_make(p.x - 8, 0.2f, p.z - 3), arc_v3_make(p.x + 8, 0.2f, p.z - 3), 0xFF60C0);
+        arc_set_line_width(1.0f); arc_set_line_glow(1.0f); arc_set_line_cap(ARC_LINE_CAP_SQUARE);
+        arc_draw_line2d(20, 60, 300, 90, 5.0f, 0x40FFC0);
     }
     /* HUD */
     arc_gfx_stats st = arc_stats();

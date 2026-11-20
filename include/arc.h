@@ -55,8 +55,8 @@ extern "C" {
 #define ARC_GAME_API
 #endif
 
-#define ARC_VERSION "0.10.10"
-#define ARC_VERSION_NUM 1010  /* major*10000 + minor*100 + patch; games can #if ARC_VERSION_NUM < ... #error */
+#define ARC_VERSION "0.10.11"
+#define ARC_VERSION_NUM 1011  /* major*10000 + minor*100 + patch; games can #if ARC_VERSION_NUM < ... #error */
 /* 0.9.8 feature macros: one per feature group, so a game (or its CMake) can #if on what this arc.h has instead of
    searching it for function names. The value is the ARC_VERSION_NUM it arrived in. New groups are added here with
    each release; a macro is never removed while its feature stays. */
@@ -103,6 +103,9 @@ extern "C" {
 #define ARC_HAS_IMMEDIATE_FRAME 1009 /* `frame` lists what immediate-mode games draw in tick() (markers, texts, targets) */
 #define ARC_HAS_FILE_LISTED    1009  /* arc_file_listed: a file is here or in a web pack that is coming; "double quoted" words in commands */
 #define ARC_HAS_MCP            1010  /* tools/arc_mcp.py (docs/MCP.md); window builds with --stdin keep drawing; the `live` command */
+#define ARC_HAS_LINE_WIDTH     1011  /* arc_set_line_width / arc_set_line_cap / arc_draw_lines; soft-edged arc_draw_line2d from 1.5 px */
+#define ARC_HAS_LINE_GLOW      1011  /* arc_set_line_glow: lines above 1 bloom */
+#define ARC_HAS_MULTITOUCH     1011  /* arc_touch_count / _get / _find, touch down|move|up, dump.input, replay format 4 */
 
 /* ======================================================================== */
 /* Math (header-only, inlined)                                              */
@@ -496,6 +499,24 @@ ARC_API int   arc_pad_any_pressed(arc_key *button);     /* a pad on which a butt
 /* Touch (web): the first finger drives the mouse and MOUSE_LEFT. True while the last pointer input was a finger
    (no hover between taps), false again once a real mouse moves. */
 ARC_API bool   arc_touch_mode(void);
+/* Multi-touch (0.10.11): every finger, read in tick() like the keys, recorded and replayed like other input (web and
+   Windows touch screens; headless: `touch down ID X Y` / `touch move ID X Y` / `touch up ID`). id is small (0, 1, ...)
+   and stays while the finger is down; a lifted finger's id is reused. x, y are window pixels (as the mouse, before
+   viewports); start_x, start_y where it went down. A finger lifted this tick is still listed for this tick with
+   released set (at its last place), so `pressed` / `released` work like arc_key_pressed / _released, and a tap shorter
+   than a tick is still seen for one tick. The first finger still drives the mouse and MOUSE_LEFT. arc_ui buttons
+   answer any finger, so a thumb steering elsewhere doesn't block a tap. dump.input lists them. */
+#define ARC_TOUCH_MAX 10
+typedef struct {
+    int   id;
+    float x, y;
+    float start_x, start_y;
+    bool  pressed;     /* went down this tick */
+    bool  released;    /* lifted this tick (listed for this tick only) */
+} arc_touch;
+ARC_API int              arc_touch_count(void);    /* fingers listed this tick (down, or lifted this tick) */
+ARC_API const arc_touch *arc_touch_get(int i);     /* NULL past the end; ordered by when they went down */
+ARC_API const arc_touch *arc_touch_find(int id);   /* NULL: no such finger this tick */
 
 /* ======================================================================== */
 /* Tunable variables (agents can list/set them: `vars`, `set name value`)  */
@@ -1282,13 +1303,27 @@ ARC_API void arc_draw_line(arc_v3 a, arc_v3 b, uint32_t rgb);
    across them: guide rings, grids and outlines on busy scenes. Perspective cameras push away from the eye,
    orthographic ones straight back. Set the camera first; it lasts until changed and resets to 0 each frame. */
 ARC_API void arc_set_line_depth_push(float fraction);
+/* Thick and glowing lines (0.10.11). arc_set_line_width(px): 3D lines drawn after it are px pixels wide on the screen (or
+   render target), whatever their distance, with a soft one-pixel edge; 1 (the default) is the plain one-pixel line.
+   arc_set_line_glow(x): their colour is multiplied by x (1 = as given): above 1 they pass the bloom threshold of
+   arc_post's bloom and glow, like emissive meshes (1..64; affects thin lines too). arc_set_line_cap: the ends of thick
+   lines, 3D and 2D (square, the 3D default: half the width past each end; round; butt: stop at the end, the 2D
+   default). All three stay until changed. Thick lines are depth tested but write no depth, so they never hide each
+   other; frame.lines reports the frame's counts and widest width. arc_draw_lines: count points taken in pairs (a
+   ship's edges), each moved by model. The limit is 131,072 thin lines and about 9,000 thick ones a frame. */
+typedef enum { ARC_LINE_CAP_SQUARE = 0, ARC_LINE_CAP_ROUND = 1, ARC_LINE_CAP_BUTT = 2 } arc_line_cap;
+ARC_API void  arc_set_line_width(float pixels);
+ARC_API void  arc_set_line_glow(float intensity);
+ARC_API void  arc_set_line_cap(arc_line_cap cap);
+ARC_API float arc_line_width(void);
+ARC_API void  arc_draw_lines(const arc_v3 *pts, int count, arc_m4 model, uint32_t rgb);
 ARC_API void arc_draw_box_lines(arc_v3 lo, arc_v3 hi, uint32_t rgb);
 ARC_API void arc_draw_grid(float half_size, float step, uint32_t rgb);
 
 /* 2D overlay in screen pixels (origin top-left), drawn after 3D in call order. */
 ARC_API void arc_draw_rect(float x, float y, float w, float h, uint32_t argb_or_rgb);
 ARC_API void arc_draw_rect_lines(float x, float y, float w, float h, uint32_t rgb);
-ARC_API void arc_draw_line2d(float x0, float y0, float x1, float y1, float thickness, uint32_t rgb);
+ARC_API void arc_draw_line2d(float x0, float y0, float x1, float y1, float thickness, uint32_t rgb);   /* 1.5 px and wider: soft edges (0.10.11) */
 /* Nine-slice: the texture's corners (src_border texels square) drawn dst_border pixels square and unstretched,
    its edges stretched one way, its middle both ways, to fill x, y, w, h. Frames, panels and buttons of any size.
    Corners shrink when the rect is smaller than two borders. (0.6.1) */

@@ -12,6 +12,7 @@
 #define ARC__PSET_MAX      (ARC__TPOST_MAX + ARC_MAX_VIEWPORTS)   /* 0.10.2 backends' post buffer sets: those targets + viewports */
 #define ARC__MAX_INSTANCES (1 << 18)   /* 262,144 mesh draws per frame */
 #define ARC__MAX_LINES     (1 << 17)
+#define ARC__MAX_LTRIS     (1 << 19)   /* 0.10.11 thick-line triangle vertices per frame (allocated at the first thick line) */
 #define ARC__MAX_VERTS2D   (1 << 20)   /* 2D triangle vertices per frame */
 #define ARC__MAX_PASSES    256
 #define ARC__LT_TX 16              /* 0.9.5 tiled lights: tiles across */
@@ -61,7 +62,7 @@ typedef struct { uint32_t mesh; int first, count; int flip; int blend; int depth
    jm[j]: joint j's part is in the mask (1) or not (0). */
 #define ARC__MAX_PATTERNS 64
 typedef struct { float p[4][4]; float jm[128]; } arc__pattern;   /* flip: mirrored instances (wind CW); 0.8.8 paint: arc_mesh_style.paint_mask, tint2, (0.8.9) tint3 (0 = none / blue off) */
-typedef struct { float x, y, z; uint32_t color; } arc__line_vertex;           /* 16 bytes */
+typedef struct { float x, y, z; uint32_t color; float gain; } arc__line_vertex;   /* 20 bytes; gain (0.10.11): colour scale, above 1 blooms */
 typedef struct { float x, y, u, v; uint32_t color; } arc__vert2d;              /* 20 bytes, color as R,G,B,A bytes */
 enum { ARC__BLEND_ALPHA = 0, ARC__BLEND_ADD, ARC__BLEND_MULTIPLY, ARC__BLEND_NONE };
 typedef struct {
@@ -117,6 +118,9 @@ typedef struct {
     /* mesh batches: mb_count drawn before immediate triangles and lines (background layer, solid meshes), then
        tb_count after them (see-through/additive sorted back to front, then the overlay layer) */
     int mb_first, mb_count, tb_count, inst_first, inst_count, imm_first, imm_count, line_first, line_count, b2_first, b2_count;
+    /* 0.10.11 thick lines: ltri_count triangle vertices (arc__line_vertex, colour alpha = edge coverage) drawn right after
+       the pass's lines: alpha blended, depth tested, no depth write, both faces, colour * gain */
+    int ltri_first, ltri_count;
     /* 0.7 soft particles: an instance in the see-through batches has fx[1] < 0 with fx[0] <= 0 (fade distance -fx[1]).
        Then, before those batches, the backend makes the depth drawn so far readable and fades each such pixel's alpha
        by clamp(|S - P| / soft, 0, 1): P = the pixel's world point, S = the depth buffer's point at that pixel through
@@ -180,6 +184,7 @@ typedef struct {
     const arc__mesh_batch *mesh_batches; int mesh_batch_count;
     const arc_vertex *imm; int imm_count;                   /* immediate triangles, double-sided */
     const arc__line_vertex *lines; int line_vertex_count;
+    const arc__line_vertex *ltris; int ltri_vertex_count;   /* 0.10.11 (see arc__pass.ltri_first) */
     const arc__vert2d *verts2d; int vert2d_count;
     const arc__batch2d *batches2d; int batch2d_count;
     const float *bones; int bone_count;      /* skinning matrices: 3 rows of 4 floats each (row-major 3x4) */
@@ -432,6 +437,10 @@ typedef struct {
     uint32_t padmask;
     uint32_t pbtn[ARC_MAX_PADS];
     float pax[ARC_MAX_PADS][ARC_AXIS_COUNT];
+    /* 0.10.11 (replay format 4) the fingers down this tick, in the order they went down: small id, window pixels now
+       and where it started (whole pixels). Pressed / released come from comparing two ticks' lists. */
+    uint8_t tcount, tpad[3];
+    struct { uint8_t id, pad; int16_t x, y, sx, sy; } touch[ARC_TOUCH_MAX];
 } arc__input_snap;
 enum { ARC__IN_TOUCH = 1, ARC__IN_PAD = 2 };
 void arc__input_key(arc_key k, bool down);       /* platform -> raw state */
@@ -452,8 +461,9 @@ int arc__hint_count(const char *key);   /* 0.10.9: times a hint was asked for (p
 void arc__frame_keep(void);   /* 0.10.9: the recording kept (immediate mode), not added to */
 uint32_t arc__frame_target(void);   /* 0.10.7: the render target 2D and markers go into now, for `frame` (0 = screen or viewport) */
 void arc__frame_target_name(uint32_t id, char *out, size_t n);   /* its name, or "#id" */   /* 0.10.6: the ARC_PART_* a joint name paints as */
-uint8_t *arc__replay_widen(const uint8_t *d, size_t size, size_t *out);   /* 0.10.5 replay format 2 -> 3 (tests) */
+uint8_t *arc__replay_widen(const uint8_t *d, size_t size, size_t *out);   /* 0.10.5 replay format 2 (0.10.11: or 3) -> current (tests) */
 void arc__input_touch_mode(bool on);
+void arc__input_touch(long long finger, int phase, float x, float y);   /* 0.10.11 platforms: phase 0 down, 1 move, 2 up / cancel; finger = the platform's id */
 
 void arc__input_mouse(float x, float y);
 void arc__input_mouse_rel(float dx, float dy);   /* captured mouse: movement added to the (unbounded) position */

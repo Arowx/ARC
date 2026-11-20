@@ -65,11 +65,12 @@ EM_JS(void, web_canvas_origin, (double *x, double *y), {
     var r = c ? c.getBoundingClientRect() : { left: 0, top: 0 };
     HEAPF64[x >> 3] = r.left; HEAPF64[y >> 3] = r.top;
 });
-static void pointer_at(double x, double y) {           /* CSS pixels on the canvas -> render pixels */
+static void css_to_px(double x, double y, float *ox, float *oy) {   /* CSS pixels on the canvas -> render pixels */
     double cw, ch; emscripten_get_element_css_size("#canvas", &cw, &ch);
     float sx = cw > 0 ? (float)arc_width() / (float)cw : 1, sy = ch > 0 ? (float)arc_height() / (float)ch : 1;
-    arc__input_mouse((float)x * sx, (float)y * sy);
+    *ox = (float)x * sx; *oy = (float)y * sy;
 }
+static void pointer_at(double x, double y) { float px, py; css_to_px(x, y, &px, &py); arc__input_mouse(px, py); }
 /* mouse look: the browser's pointer lock. It needs a user gesture, so it is asked for at once (deferred to the next
    event) and again on each click while wanted; the browser lets go on Esc, and arc_mouse_captured() then says so */
 static bool web_locked(void) { EmscriptenPointerlockChangeEvent st; return emscripten_get_pointerlock_status(&st) == EMSCRIPTEN_RESULT_SUCCESS && st.isActive; }
@@ -97,13 +98,15 @@ static bool on_mouse(int type, const EmscriptenMouseEvent *e, void *u) {
     }
     return true;
 }
-/* touch: the first finger is the mouse and its left button; the rest are ignored */
+/* touch: every finger is reported (0.10.11, arc_touch_*); the first one is also the mouse and its left button */
 static bool on_touch(int type, const EmscriptenTouchEvent *e, void *u) {
     (void)u;
     if (!WB.audio && !arc_arg_flag("mute")) { web_audio_start(); WB.audio = true; }
     for (int i = 0; i < e->numTouches; i++) {
         const EmscriptenTouchPoint *t = &e->touches[i];
         if (!t->isChanged) continue;
+        float px, py; css_to_px(t->targetX, t->targetY, &px, &py);
+        arc__input_touch((long long)t->identifier, type == EMSCRIPTEN_EVENT_TOUCHSTART ? 0 : type == EMSCRIPTEN_EVENT_TOUCHMOVE ? 1 : 2, px, py);
         if (type == EMSCRIPTEN_EVENT_TOUCHSTART && WB.touch_id < 0) {
             WB.touch_id = t->identifier; arc__input_touch_mode(true); pointer_at(t->targetX, t->targetY); arc__input_key(ARC_MOUSE_LEFT, true);
         } else if (t->identifier == WB.touch_id) {

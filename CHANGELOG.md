@@ -2,6 +2,43 @@
 
 Version numbers follow `ARC_VERSION` in `include/arc.h`. Games can check it at compile time.
 
+## 0.10.11 — 20 Nov 2026: thick, glowing lines and multi-touch
+
+Self-test 2663 (16 new). New acceptance checks `tests/line_check.md` and `tests/touch_check.md` (on the demo), plus
+`tests/line_width_test.py` (pixels) and `tests/touch_replay_test.py`. `tests/web_touch_test.js` sends real browser touch
+events to a web build (by hand: emsdk and Playwright). From Vector Trader's requests.
+
+- **Thick lines:** `arc_set_line_width(px)` makes the 3D lines drawn after it that many pixels wide at any distance,
+  with a soft one-pixel edge. Each segment becomes a strip of triangles facing the camera, built when it is drawn,
+  and every renderer draws them blended, depth tested and without depth writes, right after the thin lines.
+  `arc_set_line_cap`: square (the 3D default), round or butt. Width 1, the default, is today's one-pixel line, so
+  existing games draw exactly as before. About 9,000 thick segments a frame (the thick-line buffer is allocated at
+  the first one); thin lines still allow 131,072.
+- **Glowing lines:** `arc_set_line_glow(x)` multiplies the colour of the lines after it (thin ones too), so above 1
+  they pass `arc_post`'s bloom threshold like emissive meshes. Line vertices carry this gain (20 bytes, was 16). The
+  software renderer clamps a colour to 1 before blending into an 8-bit target, as GPUs do.
+- **`arc_draw_lines(pts, count, model, rgb)`:** a whole wireframe (point pairs) in one call.
+- **`arc_draw_line2d`** 1.5 pixels and wider now has soft edges, and butt ends unless the game calls
+  `arc_set_line_cap`. Thinner 2D lines are unchanged.
+- **`frame.lines`** (`count`, `thick`, `width_max`, `glow_max`, `triangles`) and `frame.dropped`. `stats.lines`
+  counts thick segments too.
+- **Multi-touch:** up to 10 fingers (`ARC_TOUCH_MAX`), read in `tick()` with `arc_touch_count` / `arc_touch_get` /
+  `arc_touch_find`.
+  - Each finger has a small id that stays while it is down, its pixels, its start point, and pressed / released. A
+    lifted finger is listed for one more tick.
+  - A tap shorter than a tick is still seen, and a lifted finger's id is never reused in the same tick.
+  - The first finger still drives the mouse and `MOUSE_LEFT`, so existing games don't change.
+  - Platforms: the web (every finger; the page still never scrolls or zooms) and Windows touch screens
+    (`WM_POINTER`, found at run time, so Windows 7 still runs). A real mouse move turns touch mode off on Windows,
+    as it already did on the web.
+  - Fingers are part of each tick's input, so recordings, replays, rewind and the timeline include them (replay
+    format 4; versions 2 and 3 are still read).
+  - `arc_ui` widgets answer any finger that goes down and comes up on them, so a steering thumb doesn't block a tap.
+  - Headless: `touch down ID X Y`, `touch move ID X Y`, `touch up ID` (the first scripted finger is the mouse too).
+    `dump.input` has `touches`, `touch_mode` and `touch[*]`.
+- **The demo** has a `line_test` tunable (a glowing wireframe, a thick line, a soft 2D line).
+- `incoming/README.md` keeps the request folder in git.
+
 ## 0.10.10 — 18 Nov 2026: an MCP server for live work
 
 Self-test 2647 (unchanged). Pictures unchanged. New build-test stage "MCP server" (`tests/mcp_test.py`). From Allan:

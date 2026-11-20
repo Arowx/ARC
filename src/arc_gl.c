@@ -553,8 +553,8 @@ static const char *COMP_FS =
     "  o_col = vec4(clamp(c, 0.0, 1.0), 1.0);\n"
     "}\n";
 static const char *LINE_VS =
-    "layout(location=0) in vec3 a_pos; layout(location=1) in vec4 a_col; uniform mat4 u_vp; uniform float u_flip; out vec4 v_col;\n"
-    "void main() { v_col = a_col; gl_Position = u_vp * vec4(a_pos, 1.0); gl_Position.y *= u_flip;\n"
+    "layout(location=0) in vec3 a_pos; layout(location=1) in vec4 a_col; layout(location=2) in float a_gain; uniform mat4 u_vp; uniform float u_flip; out vec4 v_col;\n"
+    "void main() { v_col = vec4(a_col.rgb * a_gain, a_col.a); gl_Position = u_vp * vec4(a_pos, 1.0); gl_Position.y *= u_flip;\n"
     "#ifdef ARC_ZFIX\n"
     "  gl_Position.z = gl_Position.z * 2.0 - gl_Position.w;\n"
     "#endif\n"
@@ -579,7 +579,7 @@ static struct {
     GLuint lt_tex, ltile_tex, lidx_tex; const arc__frame_data *cur_frame;
     GLuint lsh_tex, lsh_fbo; int lsh_res; bool lsh_ok; GLint u_lshadow, u_lsh;   /* 0.9.5 light shadow atlas (6 x 4 faces of lsh_res); lsh_ok: drawn for the pass now */   /* 0.9.5 tiled lights: data (4 x 256 RGBA32F), a pass's tiles (16 x 9 R32UI), its lists (256 x 36 R8UI) */
     GLint u_vp, u_flip, u_eye, u_ld, u_lc, u_amb, u_fc, u_fog, u_rim, u_opaque, u_mflip, u_tex, u_bones, ul_vp, ul_flip, uq_screen, uq_tex, uq_flip, uq_tflip, uq_sdf;
-    GLuint inst_vbo, line_vao, line_vbo, quad_vao, quad_vbo, imm_vao, imm_vbo, ident_vbo, bone_tex;
+    GLuint inst_vbo, line_vao, line_vbo, ltri_vao, ltri_vbo, quad_vao, quad_vbo, imm_vao, imm_vbo, ident_vbo, bone_tex;
     GLuint fbo[ARC__MAX_TEXTURES], rbo[ARC__MAX_TEXTURES];
     uint8_t tfmt[ARC__MAX_TEXTURES]; int ctex;   /* 0.7.1: a texture's ARC_TEXFMT_* on the GPU; formats the GPU takes (bit 1 << fmt) */
     bool arr[ARC__MAX_TEXTURES];                 /* 0.9.6 the texture is an array (GL_TEXTURE_2D_ARRAY) */
@@ -812,10 +812,14 @@ static bool gl_init(void) {
     glBindBuffer(GL_ARRAY_BUFFER, GL.ident_vbo); glBufferData(GL_ARRAY_BUFFER, sizeof ident, ident, GL_STATIC_DRAW);
     for (int a = 6; a <= 15; a++) { glEnableVertexAttribArray((GLuint)a); glVertexAttribDivisor((GLuint)a, 1); }
     gl_instance_attribs(0);
-    glGenVertexArrays(1, &GL.line_vao); glGenBuffers(1, &GL.line_vbo);
-    glBindVertexArray(GL.line_vao); glBindBuffer(GL_ARRAY_BUFFER, GL.line_vbo);
-    glEnableVertexAttribArray(0); glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 16, (void *)0);
-    glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, 16, (void *)12);
+    for (int k = 0; k < 2; k++) {   /* lines, and (0.10.11) thick lines' triangles: position, colour, gain */
+        GLuint *vao = k ? &GL.ltri_vao : &GL.line_vao, *vbo = k ? &GL.ltri_vbo : &GL.line_vbo;
+        glGenVertexArrays(1, vao); glGenBuffers(1, vbo);
+        glBindVertexArray(*vao); glBindBuffer(GL_ARRAY_BUFFER, *vbo);
+        glEnableVertexAttribArray(0); glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, (GLsizei)sizeof(arc__line_vertex), (void *)0);
+        glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, (GLsizei)sizeof(arc__line_vertex), (void *)12);
+        glEnableVertexAttribArray(2); glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, (GLsizei)sizeof(arc__line_vertex), (void *)16);
+    }
     glGenVertexArrays(1, &GL.quad_vao); glGenBuffers(1, &GL.quad_vbo);
     glBindVertexArray(GL.quad_vao); glBindBuffer(GL_ARRAY_BUFFER, GL.quad_vbo);
     glEnableVertexAttribArray(0); glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 20, (void *)0);
@@ -1471,6 +1475,7 @@ static void gl_render(const arc__frame_data *f) {
     if (f->instance_count) gl_upload(GL.inst_vbo, f->instances, sizeof(arc__instance) * (size_t)f->instance_count);
     if (f->imm_count) gl_upload(GL.imm_vbo, f->imm, sizeof(arc_vertex) * (size_t)f->imm_count);
     if (f->line_vertex_count) gl_upload(GL.line_vbo, f->lines, sizeof(arc__line_vertex) * (size_t)f->line_vertex_count);
+    if (f->ltri_vertex_count) gl_upload(GL.ltri_vbo, f->ltris, sizeof(arc__line_vertex) * (size_t)f->ltri_vertex_count);
     if (f->vert2d_count) gl_upload(GL.quad_vbo, f->verts2d, sizeof(arc__vert2d) * (size_t)f->vert2d_count);
     if (f->bone_count) {
         int rows = (f->bone_count + ARC__BONES_PER_ROW - 1) / ARC__BONES_PER_ROW;
@@ -1527,6 +1532,14 @@ static void gl_render(const arc__frame_data *f) {
             glUseProgram(GL.line_prog); glUniformMatrix4fv(GL.ul_vp, 1, GL_FALSE, P->view_proj.m); glUniform1f(GL.ul_flip, flip);
             glBindVertexArray(GL.line_vao);
             glDrawArrays(GL_LINES, P->line_first, P->line_count);
+        }
+        if (P->ltri_count) {                    /* 0.10.11 thick lines: blended, depth tested, no depth write, both faces */
+            glUseProgram(GL.line_prog); glUniformMatrix4fv(GL.ul_vp, 1, GL_FALSE, P->view_proj.m); glUniform1f(GL.ul_flip, flip);
+            glEnable(GL_BLEND); glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+            glDepthMask(GL_FALSE); glEnable(GL_DEPTH_TEST); glDepthFunc(GL.zless); glDisable(GL_CULL_FACE);
+            glBindVertexArray(GL.ltri_vao);
+            glDrawArrays(GL_TRIANGLES, P->ltri_first, P->ltri_count);
+            glDepthMask(GL_TRUE); glDisable(GL_BLEND); glEnable(GL_CULL_FACE);
         }
         if (P->tb_count) {                      /* see-through and additive meshes, already sorted back to front */
             gl_mesh_uniforms(P, flip, false);

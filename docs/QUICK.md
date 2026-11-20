@@ -36,7 +36,7 @@ arc_app arc_main(int argc, char **argv) {
 - [Random numbers (deterministic, PCG32)](api/random-numbers.md) - 13 names
 - [Memory](api/memory.md) - 28 names
 - [App, time and the main loop](api/app-time-and-the-main-loop.md) - 30 names
-- [Input (sampled once per tick; deterministic and recordable)](api/input.md) - 26 names
+- [Input (sampled once per tick; deterministic and recordable)](api/input.md) - 31 names
 - [Tunable variables (agents can list/set them: `vars`, `set name value`)](api/tunable-variables.md) - 3 names
 - [JSON writer (for dump() and tools)](api/json-writer.md) - 14 names
 - [Colours, meshes and materials](api/graphics-meshes.md) - 43 names
@@ -46,7 +46,7 @@ arc_app arc_main(int argc, char **argv) {
 - [Drawing meshes and mesh styles](api/graphics-drawing.md) - 27 names
 - [Skeletal animation](api/graphics-animation.md) - 48 names
 - [Particles, trails, decals and stamps](api/graphics-effects.md) - 30 names
-- [Immediate geometry, quick shapes and 3D lines](api/graphics-shapes.md) - 10 names
+- [Immediate geometry, quick shapes and 3D lines](api/graphics-shapes.md) - 16 names
 - [2D drawing: rects, sprites, nine-slice, blend, clip](api/graphics-2d.md) - 15 names
 - [Text: built-in font, baked fonts, rich text](api/graphics-text.md) - 34 names
 - [Render targets, screenshots and frame timing](api/graphics-targets.md) - 26 names
@@ -237,6 +237,11 @@ arc_app arc_main(int argc, char **argv) {
 - `arc_pad_first` - the pad the ARC_PAD_* keys and arc_pad_axis read (-1: none)
 - `arc_pad_any_pressed` - a pad on which a button went down this tick ("press A to join"), -1: none
 - `arc_touch_mode` - Touch (web): the first finger drives the mouse and MOUSE_LEFT.
+- `ARC_TOUCH_MAX` _(macro)_ - Multi-touch (0.10.11): every finger, read in tick() like the keys, recorded and replayed…
+- `arc_touch` _(type)_
+- `arc_touch_count` - fingers listed this tick (down, or lifted this tick)
+- `arc_touch_get` - NULL past the end; ordered by when they went down
+- `arc_touch_find` - NULL: no such finger this tick
 
 ## [Tunable variables (agents can list/set them: `vars`, `set name value`)](api/tunable-variables.md)
 
@@ -502,6 +507,12 @@ arc_app arc_main(int argc, char **argv) {
 - `arc_draw_sphere`
 - `arc_draw_line` - 3D lines (unlit, drawn after meshes, depth-tested)
 - `arc_set_line_depth_push` - Depth offset for lines (0.6.2): lines drawn after this are pushed `fraction` further from…
+- `arc_line_cap` _(type)_ - Thick and glowing lines (0.10.11).
+- `arc_set_line_width`
+- `arc_set_line_glow`
+- `arc_set_line_cap`
+- `arc_line_width`
+- `arc_draw_lines`
 - `arc_draw_box_lines`
 - `arc_draw_grid`
 
@@ -509,7 +520,7 @@ arc_app arc_main(int argc, char **argv) {
 
 - `arc_draw_rect` - 2D overlay in screen pixels (origin top-left), drawn after 3D in call order.
 - `arc_draw_rect_lines`
-- `arc_draw_line2d`
+- `arc_draw_line2d` - 1.5 px and wider: soft edges (0.10.11)
 - `arc_draw_nine` - Nine-slice: the texture's corners (src_border texels square) drawn dst_border pixels squa…
 - `arc_draw_sprite`
 - `arc_blend` _(type)_ - ---- 2D extras: blend modes, clipping, triangles, rotated sprites ----

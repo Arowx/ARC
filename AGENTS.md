@@ -54,6 +54,7 @@ Pass commands with `--cmd "a; b"`, `--script file.txt`, or interactively with `-
 | `pad N connect` / `pad N press A` / `pad N release A` / `pad N axis LX 0.5` / `pad N disconnect` | 0.10.5: pad N of several (couch multiplayer: `arc_pad_down(N, ARC_PAD_A)`, `arc_pad_axis_of`); `dump` lists `pads` |
 | `type TEXT` | typed text, read by the game as `arc_text_input()` next tick |
 | `touch on` / `touch off` | report the pointer as a finger (`arc_touch_mode()`) |
+| `touch down ID X Y` / `touch move ID X Y` / `touch up ID` | 0.10.11 multi-touch: fingers by id (`arc_touch_get`; the first one is also the mouse); `dump.input.touches`, `input.touch[id=1].x` |
 | `shot FILE.png` | draw the current state and save it now (works between `step`s); `FILE.jpg` saves a JPEG (quality 90, ~10x smaller) |
 | `hud off` / `hud on` | hide or show all 2D on the screen (HUD, text, UI, FPS overlay) for clean screenshots; also `--no-hud` |
 | `camera` / `camera EX EY EZ TX TY TZ [FOV]` / `camera orbit YAW PITCH DIST [FOV]` / `camera off` | show the camera, or take over the game's screen camera for screenshots (orbit: around the target of the camera the game last drew with; angles in degrees) |
@@ -145,6 +146,17 @@ pixels (`"on_screen_box": false` when it never reached the screen). `frame.targe
 camera `eye`, mesh count, `on_screen_at`). Marker shapes are names: `frame.markers[shape=ring]`.
 Immediate-mode games (0.10.9): `frame` lists what the last tick drew, targets, markers and texts included, the same
 as for games with `draw()`.
+
+## Thick, glowing lines and multi-touch (0.10.11)
+
+- **Vector looks:** `arc_set_line_width(4)` and the 3D lines after it are 4 pixels wide at any distance, with soft
+  edges; `arc_set_line_glow(2.5f)` makes them bloom with `arc_post` bloom; `arc_set_line_cap(ARC_LINE_CAP_ROUND)`;
+  `arc_draw_lines(pts, n, model, rgb)` draws a wireframe of point pairs. They stay set until changed. Check them with
+  `frame.lines.width_max`, `frame.lines.thick` and `frame.dropped`.
+- **Phones:** `for (int i = 0; i < arc_touch_count(); i++) { const arc_touch *t = arc_touch_get(i); ... }` in tick:
+  `id`, `x`, `y`, `start_x`, `start_y`, `pressed`, `released`. Steer with one finger, fire with another; `arc_ui`
+  buttons take any finger. Test with `touch down 0 200 400; step 2; touch down 1 1100 600; step 2` and
+  `expect input.touches == 2`. Fingers are recorded and replayed like keys.
 
 ## Hints (0.9.0)
 

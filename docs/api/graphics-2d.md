@@ -10,7 +10,7 @@ Part of **Graphics** · [quick reference](../QUICK.md) · [full API](../API.md)
 ```c
 ARC_API void arc_draw_rect(float x, float y, float w, float h, uint32_t argb_or_rgb);
 ARC_API void arc_draw_rect_lines(float x, float y, float w, float h, uint32_t rgb);
-ARC_API void arc_draw_line2d(float x0, float y0, float x1, float y1, float thickness, uint32_t rgb);
+ARC_API void arc_draw_line2d(float x0, float y0, float x1, float y1, float thickness, uint32_t rgb);    // 1.5 px and wider: soft edges (0.10.11)
 ```
 
 Nine-slice: the texture's corners (src_border texels square) drawn dst_border pixels square and unstretched,

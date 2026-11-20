@@ -299,8 +299,8 @@ static const char *HLSL =
     "  }\n"
     "  return oc;\n"
     "}\n"
-    "struct LI { float3 p : POSITION; float4 c : COLOR; };\n"
-    "VO vs_line(LI i) { VO o; o.c = i.c; o.uv = float2(0, 0); o.pos = fix_z(mul(vp, float4(i.p, 1.0))); return o; }\n"
+    "struct LI { float3 p : POSITION; float4 c : COLOR; float g : TEXCOORD0; };\n"
+    "VO vs_line(LI i) { VO o; o.c = float4(i.c.rgb * i.g, i.c.a); o.uv = float2(0, 0); o.pos = fix_z(mul(vp, float4(i.p, 1.0))); return o; }\n"
     "struct QI { float2 p : POSITION; float2 uv : TEXCOORD0; float4 c : COLOR; };\n"
     "VO vs_quad(QI i) { VO o; o.c = i.c; o.uv = i.uv; o.pos = float4(i.p.x / screen.x * 2.0 - 1.0, 1.0 - i.p.y / screen.y * 2.0, 0.5, 1.0); return o; }\n"
     "float4 ps_color(VO i) : SV_Target { return i.c; }\n"
@@ -448,7 +448,7 @@ static struct {
     ID3D11InputLayout *il_mesh, *il_line, *il_quad;
     ID3D11Buffer *cb_mat;   /* material constants (b2), per batch */
     ID3D11Buffer *cb_quad; float quad_sdf;   /* 0.10.1 b3: 2D batch constants (distance-field text) */
-    ID3D11Buffer *cb, *inst_vb, *line_vb, *quad_vb, *imm_vb, *ident_vb, *noskin_vb; size_t inst_cap, line_cap, quad_cap, imm_cap;
+    ID3D11Buffer *cb, *inst_vb, *line_vb, *ltri_vb, *quad_vb, *imm_vb, *ident_vb, *noskin_vb; size_t inst_cap, line_cap, ltri_cap, quad_cap, imm_cap;
     ID3D11Texture2D *bone_tex; ID3D11ShaderResourceView *bone_srv;
     ID3D11Texture2D *lt_tex[3]; ID3D11ShaderResourceView *lt_srv[3];   /* 0.9.5 lights: data 4 x 256 RGBA32F, tiles 16 x 9 R32_UINT, lists 256 x 36 R8_UINT */
     const arc__frame_data *cur_frame;
@@ -701,13 +701,14 @@ static bool d3d_init(void) {
         { "TEXCOORD", 10, DXGI_FORMAT_R32G32B32A32_FLOAT, 2, 144, D3D11_INPUT_PER_INSTANCE_DATA, 1 } };
     D3D11_INPUT_ELEMENT_DESC il_line[] = {
         { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-        { "COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 } };
+        { "COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+        { "TEXCOORD", 0, DXGI_FORMAT_R32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0 } };   /* 0.10.11 gain */
     D3D11_INPUT_ELEMENT_DESC il_quad[] = {
         { "POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
         { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 8, D3D11_INPUT_PER_VERTEX_DATA, 0 },
         { "COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0 } };
     if (FAILED(ID3D11Device_CreateInputLayout(D.dev, il_mesh, (UINT)(sizeof il_mesh / sizeof il_mesh[0]), ID3D10Blob_GetBufferPointer(b_vm), ID3D10Blob_GetBufferSize(b_vm), &D.il_mesh))) { fprintf(stderr, "ARC error D3D11 mesh input layout\n"); return false; }
-    ID3D11Device_CreateInputLayout(D.dev, il_line, 2, ID3D10Blob_GetBufferPointer(b_vl), ID3D10Blob_GetBufferSize(b_vl), &D.il_line);
+    ID3D11Device_CreateInputLayout(D.dev, il_line, 3, ID3D10Blob_GetBufferPointer(b_vl), ID3D10Blob_GetBufferSize(b_vl), &D.il_line);
     ID3D11Device_CreateInputLayout(D.dev, il_quad, 3, ID3D10Blob_GetBufferPointer(b_vq), ID3D10Blob_GetBufferSize(b_vq), &D.il_quad);
     REL(b_vm); REL(b_vl); REL(b_vq); REL(b_pm); REL(b_pc); REL(b_pt);
 
@@ -791,7 +792,7 @@ static void d3d_post_free(void) {
 static void d3d_shutdown(void) {
     for (int i = 0; i < ARC__MAX_MESHES; i++) { REL(D.meshes[i].vb); REL(D.meshes[i].ib); REL(D.meshes[i].sb); }
     for (int i = 0; i < ARC__MAX_TEXTURES; i++) { d3d_tex *t = &D.texs[i]; REL(t->srv); REL(t->tex); REL(t->rtv); REL(t->dsv); REL(t->depth); }
-    REL(D.cb_mat); REL(D.inst_vb); REL(D.imm_vb); REL(D.ident_vb); REL(D.noskin_vb); REL(D.rs_cull_cw); REL(D.line_vb); REL(D.quad_vb); REL(D.cb);
+    REL(D.cb_mat); REL(D.inst_vb); REL(D.imm_vb); REL(D.ident_vb); REL(D.noskin_vb); REL(D.rs_cull_cw); REL(D.line_vb); REL(D.ltri_vb); REL(D.quad_vb); REL(D.cb);
     REL(D.bone_srv); REL(D.bone_tex);
     for (int k = 0; k < 3; k++) { REL(D.lt_srv[k]); REL(D.lt_tex[k]); }
     REL(D.lsh_srv); REL(D.lsh_dsv); REL(D.lsh_tex); REL(D.dummy_arr); REL(D.dummy_arr_tex);
@@ -1297,6 +1298,7 @@ static void d3d_render(const arc__frame_data *f) {
     if (f->instance_count) upload(&D.inst_vb, &D.inst_cap, D3D11_BIND_VERTEX_BUFFER, f->instances, sizeof(arc__instance) * (size_t)f->instance_count);
     if (f->imm_count) upload(&D.imm_vb, &D.imm_cap, D3D11_BIND_VERTEX_BUFFER, f->imm, sizeof(arc_vertex) * (size_t)f->imm_count);
     if (f->line_vertex_count) upload(&D.line_vb, &D.line_cap, D3D11_BIND_VERTEX_BUFFER, f->lines, sizeof(arc__line_vertex) * (size_t)f->line_vertex_count);
+    if (f->ltri_vertex_count) upload(&D.ltri_vb, &D.ltri_cap, D3D11_BIND_VERTEX_BUFFER, f->ltris, sizeof(arc__line_vertex) * (size_t)f->ltri_vertex_count);
     if (f->vert2d_count) upload(&D.quad_vb, &D.quad_cap, D3D11_BIND_VERTEX_BUFFER, f->verts2d, sizeof(arc__vert2d) * (size_t)f->vert2d_count);
     D.cur_frame = f;
     if (f->light_count && f->lights) {   /* 0.9.5 the frame's lights: 4 RGBA32F texels each */
@@ -1391,6 +1393,17 @@ static void d3d_render(const arc__frame_data *f) {
             ID3D11DeviceContext_IASetVertexBuffers(c, 0, 1, &D.line_vb, &stride, &off);
             ID3D11DeviceContext_VSSetShader(c, D.vs_line, NULL, 0); ID3D11DeviceContext_PSSetShader(c, D.ps_color, NULL, 0);
             ID3D11DeviceContext_Draw(c, (UINT)P->line_count, (UINT)P->line_first);
+        }
+        if (P->ltri_count) {                    /* 0.10.11 thick lines: blended, depth tested, no depth write, both faces */
+            UINT stride = sizeof(arc__line_vertex), off = 0; float lbf[4] = { 0, 0, 0, 0 };
+            ID3D11DeviceContext_IASetInputLayout(c, D.il_line); ID3D11DeviceContext_IASetPrimitiveTopology(c, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            ID3D11DeviceContext_IASetVertexBuffers(c, 0, 1, &D.ltri_vb, &stride, &off);
+            ID3D11DeviceContext_VSSetShader(c, D.vs_line, NULL, 0); ID3D11DeviceContext_PSSetShader(c, D.ps_color, NULL, 0);
+            ID3D11DeviceContext_OMSetBlendState(c, D.bs[ARC__BLEND_ALPHA], lbf, 0xFFFFFFFF); ID3D11DeviceContext_OMSetDepthStencilState(c, D.ds_test, 0);
+            ID3D11DeviceContext_RSSetState(c, D.rs_none);
+            ID3D11DeviceContext_Draw(c, (UINT)P->ltri_count, (UINT)P->ltri_first);
+            ID3D11DeviceContext_RSSetState(c, D.rs_cull);
+            ID3D11DeviceContext_OMSetBlendState(c, D.bs[ARC__BLEND_NONE], lbf, 0xFFFFFFFF); ID3D11DeviceContext_OMSetDepthStencilState(c, D.ds_on, 0);
         }
         if (P->tb_count) {                      /* see-through and additive meshes, already sorted back to front */
             bool soft = false;

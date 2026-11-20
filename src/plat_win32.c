@@ -54,6 +54,23 @@ static void w_apply_capture(void) {
 }
 static void w_mouse_capture(bool on) { W.cap_want = on; w_apply_capture(); }
 static bool w_mouse_captured(void) { return W.cap_on; }
+/* 0.10.11 touch screens: WM_POINTER* (Windows 8+) for each finger; the system still turns the first finger into mouse
+   messages, so the mouse and MOUSE_LEFT follow it as before. GetPointerType is looked up at run time (Windows 7 has none). */
+#ifndef WM_POINTERUPDATE
+#define WM_POINTERUPDATE 0x0245
+#define WM_POINTERDOWN 0x0246
+#define WM_POINTERUP 0x0247
+#endif
+#ifndef WM_POINTERCAPTURECHANGED
+#define WM_POINTERCAPTURECHANGED 0x024C
+#endif
+typedef BOOL (WINAPI *w_get_pointer_type_fn)(UINT32, DWORD *);
+static bool w_is_touch(UINT32 id) {
+    static w_get_pointer_type_fn fn; static bool looked;
+    if (!looked) { looked = true; HMODULE u = GetModuleHandleA("user32.dll"); if (u) fn = (w_get_pointer_type_fn)(void *)GetProcAddress(u, "GetPointerType"); }
+    DWORD t = 0; return fn && fn(id, &t) && t == 2;   /* PT_TOUCH */
+}
+static bool w_mouse_from_touch(void) { return (GetMessageExtraInfo() & 0xFFFFFF00) == 0xFF515700; }   /* (promoted from touch or pen) */
 static LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_CLOSE: arc__quit_requested = true; return 0;
@@ -66,7 +83,16 @@ static LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_LBUTTONDOWN: case WM_LBUTTONUP: arc__input_key(ARC_MOUSE_LEFT, msg == WM_LBUTTONDOWN); if (msg == WM_LBUTTONDOWN) SetCapture(h); else ReleaseCapture(); return 0;
     case WM_RBUTTONDOWN: case WM_RBUTTONUP: arc__input_key(ARC_MOUSE_RIGHT, msg == WM_RBUTTONDOWN); return 0;
     case WM_MBUTTONDOWN: case WM_MBUTTONUP: arc__input_key(ARC_MOUSE_MIDDLE, msg == WM_MBUTTONDOWN); return 0;
+    case WM_POINTERDOWN: case WM_POINTERUPDATE: case WM_POINTERUP: case WM_POINTERCAPTURECHANGED: {
+        UINT32 id = (UINT32)LOWORD(wp);
+        if (w_is_touch(id)) {
+            POINT pt; pt.x = (short)LOWORD(lp); pt.y = (short)HIWORD(lp); ScreenToClient(h, &pt);
+            int phase = msg == WM_POINTERDOWN ? 0 : msg == WM_POINTERUPDATE ? 1 : 2;
+            arc__input_touch((long long)id, phase, (float)pt.x, (float)pt.y);
+        }
+        break; }   /* (on to DefWindowProc: the first finger also becomes the mouse) */
     case WM_MOUSEMOVE:
+        if (!w_mouse_from_touch()) arc__input_touch_mode(false);   /* 0.10.11: a real mouse again */
         if (!W.cap_on) arc__input_mouse((float)(short)LOWORD(lp), (float)(short)HIWORD(lp));
         else if (!W.raw_seen) {   /* no raw input (some drivers, remote desktops, Wine): movement from the centre, then back */
             RECT r; GetClientRect(h, &r); int cx = (r.right - r.left) / 2, cy = (r.bottom - r.top) / 2;
@@ -98,6 +124,7 @@ static LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_SIZE: if (wp != SIZE_MINIMIZED) { int w = LOWORD(lp), hh = HIWORD(lp); arc__set_size(w, hh); arc__d3d11_resize(w, hh); if (W.cap_on) w_clip(); } return 0;
     default: return DefWindowProcW(h, msg, wp, lp);
     }
+    return DefWindowProcW(h, msg, wp, lp);   /* (cases that break: touch pointers) */
 }
 
 /* ---- XInput: up to 4 controllers; pad N = XInput player N (0.10.5) ---- */

@@ -936,9 +936,70 @@ static void draw_lines(const arc__frame_data *f, const arc__pass *P) {
             float t = (float)s2 / (float)steps; int x = (int)(x0 + (x1 - x0) * t), y = (int)(y0 + (y1 - y0) * t); float z = z0 + (z1 - z0) * t;
             if (x < 0 || y < 0 || x >= S.cw || y >= S.ch) continue;
             size_t k = (size_t)y * S.cw + x; if (P->zrev ? z < S.depth[k] - 0.5e-4f : z > S.depth[k] + 1e-4f) continue;   /* (the same slack: reversed depth = (1 - ndc) / 2) */
-            if (S.fcolor) { float *o = S.fcolor + k * 4; o[0] = (uint8_t)(a->color) / 255.0f; o[1] = (uint8_t)(a->color >> 8) / 255.0f; o[2] = (uint8_t)(a->color >> 16) / 255.0f; o[3] = 1; continue; }
-            uint8_t *o = S.color + k * 4; o[0] = (uint8_t)(a->color); o[1] = (uint8_t)(a->color >> 8); o[2] = (uint8_t)(a->color >> 16); o[3] = 255;
+            float g = a->gain > 0 ? a->gain : 1.0f;   /* 0.10.11 glow */
+            if (S.fcolor) { float *o = S.fcolor + k * 4; o[0] = (uint8_t)(a->color) / 255.0f * g; o[1] = (uint8_t)(a->color >> 8) / 255.0f * g; o[2] = (uint8_t)(a->color >> 16) / 255.0f * g; o[3] = 1; continue; }
+            uint8_t *o = S.color + k * 4;
+            if (g == 1.0f) { o[0] = (uint8_t)(a->color); o[1] = (uint8_t)(a->color >> 8); o[2] = (uint8_t)(a->color >> 16); }
+            else for (int q = 0; q < 3; q++) { float vq = (float)(uint8_t)(a->color >> (8 * q)) * g; o[q] = (uint8_t)(vq > 255.0f ? 255.0f : vq); }
+            o[3] = 255;
         }
+    }
+}
+/* 0.10.11 thick lines: triangles with per-corner colour (alpha = coverage), depth tested (no write), blended over,
+   colour times gain. Clipped against the near plane in clip space, then filled with edge functions. */
+typedef struct { float x, y, z, w, c[4], g; } ltv;
+static void ltri_fill(const arc__pass *P, ltv v[3]) {
+    float X[3], Y[3], Z[3];
+    for (int i = 0; i < 3; i++) { X[i] = (v[i].x / v[i].w * 0.5f + 0.5f) * (float)S.cw; Y[i] = (0.5f - v[i].y / v[i].w * 0.5f) * (float)S.ch; Z[i] = v[i].z / v[i].w; }
+    float area = (X[1] - X[0]) * (Y[2] - Y[0]) - (X[2] - X[0]) * (Y[1] - Y[0]);
+    if (fabsf(area) < 1e-12f) return;
+    int x0 = (int)floorf(arc_minf(X[0], arc_minf(X[1], X[2]))), x1 = (int)ceilf(arc_maxf(X[0], arc_maxf(X[1], X[2])));
+    int y0 = (int)floorf(arc_minf(Y[0], arc_minf(Y[1], Y[2]))), y1 = (int)ceilf(arc_maxf(Y[0], arc_maxf(Y[1], Y[2])));
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 > S.cw - 1) x1 = S.cw - 1;
+    if (y1 > S.ch - 1) y1 = S.ch - 1;
+    float inv = 1.0f / area;
+    for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) {
+        float px = (float)x + 0.5f, py = (float)y + 0.5f;
+        float b0 = ((X[1] - px) * (Y[2] - py) - (X[2] - px) * (Y[1] - py)) * inv;
+        float b1 = ((X[2] - px) * (Y[0] - py) - (X[0] - px) * (Y[2] - py)) * inv;
+        float b2 = 1.0f - b0 - b1;
+        if (b0 < 0 || b1 < 0 || b2 < 0) continue;
+        float z = b0 * Z[0] + b1 * Z[1] + b2 * Z[2];
+        size_t k = (size_t)y * S.cw + x; if (P->zrev ? z < S.depth[k] - 0.5e-4f : z > S.depth[k] + 1e-4f) continue;
+        float a = b0 * v[0].c[3] + b1 * v[1].c[3] + b2 * v[2].c[3], g = b0 * v[0].g + b1 * v[1].g + b2 * v[2].g;
+        if (a <= 0.0f) continue;
+        float rgb[3]; for (int q = 0; q < 3; q++) rgb[q] = (b0 * v[0].c[q] + b1 * v[1].c[q] + b2 * v[2].c[q]) * g;
+        if (S.fcolor) { float *o = S.fcolor + k * 4; for (int q = 0; q < 3; q++) o[q] = o[q] * (1.0f - a) + rgb[q] * a; o[3] = 1; continue; }
+        uint8_t *o = S.color + k * 4;
+        for (int q = 0; q < 3; q++) {   /* (an 8-bit target clamps the colour before blending, as GPUs do) */
+            float vq = (float)o[q] * (1.0f - a) + arc_minf(rgb[q], 1.0f) * 255.0f * a; o[q] = (uint8_t)(vq > 255.0f ? 255.0f : vq + 0.5f);
+        }
+        o[3] = 255;
+    }
+}
+static void draw_ltris(const arc__frame_data *f, const arc__pass *P) {
+    for (int i = P->ltri_first; i + 2 < P->ltri_first + P->ltri_count; i += 3) {
+        ltv in[3], poly[4]; int n = 0;
+        for (int k = 0; k < 3; k++) {
+            const arc__line_vertex *s0 = &f->ltris[i + k];
+            arc_v4 c = arc_m4_mul_v4(P->view_proj, (arc_v4){ s0->x, s0->y, s0->z, 1 });
+            in[k].x = c.x; in[k].y = c.y; in[k].z = c.z; in[k].w = c.w; in[k].g = s0->gain > 0 ? s0->gain : 1.0f;
+            for (int q = 0; q < 4; q++) in[k].c[q] = (float)(uint8_t)(s0->color >> (8 * q)) / 255.0f;
+        }
+        for (int k = 0; k < 3; k++) {   /* keep the part in front of the near plane (reversed: z = w) */
+            const ltv *A = &in[k], *B = &in[(k + 1) % 3];
+            float da = P->zrev ? A->w - A->z : A->z + A->w, db = P->zrev ? B->w - B->z : B->z + B->w;
+            if (da >= 0) poly[n++] = *A;
+            if ((da >= 0) != (db >= 0) && n < 4) {
+                float t = da / (da - db); ltv m;
+                m.x = A->x + (B->x - A->x) * t; m.y = A->y + (B->y - A->y) * t; m.z = A->z + (B->z - A->z) * t; m.w = A->w + (B->w - A->w) * t;
+                m.g = A->g + (B->g - A->g) * t; for (int q = 0; q < 4; q++) m.c[q] = A->c[q] + (B->c[q] - A->c[q]) * t;
+                poly[n++] = m;
+            }
+        }
+        for (int k = 1; k + 1 < n; k++) { ltv t3[3] = { poly[0], poly[k], poly[k + 1] }; if (t3[0].w > 0 && t3[1].w > 0 && t3[2].w > 0) ltri_fill(P, t3); }
     }
 }
 /* order inside a pass: background and solid meshes, immediate triangles, lines, then see-through/additive meshes
@@ -947,6 +1008,7 @@ static void draw_3d(const arc__frame_data *f, const arc__pass *P) {
     for (int b = P->mb_first; b < P->mb_first + P->mb_count; b++) draw_batch(f, P, &f->mesh_batches[b], f->mesh_batches[b].blend);
     if (P->imm_count) draw_batch(f, P, NULL, ARC__MB_OPAQUE);
     draw_lines(f, P);
+    if (P->ltri_count) draw_ltris(f, P);   /* 0.10.11 */
     for (int b = P->mb_first + P->mb_count; b < P->mb_first + P->mb_count + P->tb_count; b++) draw_batch(f, P, &f->mesh_batches[b], f->mesh_batches[b].blend);
 }
 
