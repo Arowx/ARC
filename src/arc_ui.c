@@ -306,6 +306,17 @@ static wstate interact(const char *label, float x, float y, float w, float h, bo
     if (s.hover) U.hot = s.id;
     if (s.hover && arc_key_pressed(ARC_MOUSE_LEFT) && !U.drag_panel) { U.active = s.id; s.pressed = true; if (U.kb_focus && U.kb_focus != s.id) U.kb_focus = 0; }
     if (U.active == s.id && arc_key_released(ARC_MOUSE_LEFT) && s.hover) s.released_on = true;
+    {   /* 0.10.11 any finger: one that went down and came up on the widget presses it (a thumb steering elsewhere
+           doesn't block it); the first finger is the mouse as well, which gives the same press */
+        int vx = 0, vy = 0; arc__viewport_cur(&vx, &vy, NULL, NULL);
+        for (int i = 0, n = arc_touch_count(); i < n; i++) {
+            const arc_touch *t = arc_touch_get(i);
+            float tx = t->x - (float)vx, ty = t->y - (float)vy, sx = t->start_x - (float)vx, sy = t->start_y - (float)vy;
+            bool in_now = tx >= x && ty >= y && tx < x + w && ty < y + h, in_start = sx >= x && sy >= y && sx < x + w && sy < y + h;
+            if (t->pressed && in_now) { s.pressed = true; U.mouse_over_ui = true; }
+            if (t->released && in_now && in_start) s.released_on = true;
+        }
+    }
     if (focusable) {
         int idx = U.focus_count++; s.index = idx;
         if (idx < UI_MAX_WIDGETS) { U.fr[idx][0] = x; U.fr[idx][1] = y; U.fr[idx][2] = w; U.fr[idx][3] = h; U.fr_lr[idx] = 0; U.nfr = idx + 1; }

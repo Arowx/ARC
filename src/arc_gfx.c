@@ -28,6 +28,7 @@ static int g_culled, g_lod_n[4], g_static_draws; static uint32_t g_cam_version =
 static bool scene_cell_drawable(int cell);
 static uint32_t scene_lod_pick(uint32_t mesh, const float *model);
 static void scene_lod_forget(uint32_t mesh);
+static int g_lines_thick; static float g_lines_wmax, g_lines_gmax;   /* 0.10.11 this frame's thick lines, widest, brightest */
 static bool g_lod_any;   /* some mesh has LODs */
 static void over_limit(int which) {
     static bool told[LIM_COUNT];
@@ -82,6 +83,8 @@ static struct {
     int *mesh_counts;
     arc_vertex *imm; int imm_count;
     arc__line_vertex *lines; int line_count;
+    arc__line_vertex *ltris; int ltri_count;          /* 0.10.11 thick lines as triangles (allocated at the first one) */
+    float line_width, line_glow; int line_cap; bool line_cap2d_set;   /* 0.10.11, kept until changed (arc_set_line_width / _glow / _cap) */
     arc__vert2d *v2; int v2_count;
     arc__batch2d *b2; int b2_count;
     arc__pass passes[ARC__MAX_PASSES]; int pass_count;
@@ -1439,6 +1442,7 @@ static void begin_pass(uint32_t target, bool clear, uint32_t argb) {
     p->vport = target && R.vp_cur >= 0 && target == R.vp_tex[R.vp_cur] ? R.vp_cur + 1 : 0;   /* 0.10.2 */
     pass_copy_view(p);
     p->inst_first = R.raw_count; p->imm_first = R.imm_count; p->line_first = R.line_count; p->b2_first = R.b2_count;
+    p->ltri_first = R.ltri_count;
 }
 static void end_pass_counts(void) {
     if (!R.pass_count) return;
@@ -1447,6 +1451,7 @@ static void end_pass_counts(void) {
     p->lsh_n = 0; while (p->lsh_n < R.lsh_count && R.lsh_light[p->lsh_n] < p->nlights) p->lsh_n++;
     p->inst_count = R.raw_count - p->inst_first; p->imm_count = R.imm_count - p->imm_first;
     p->line_count = R.line_count - p->line_first; p->b2_count = R.b2_count - p->b2_first;
+    p->ltri_count = R.ltri_count - p->ltri_first;
 }
 void arc_target_begin(arc_texture t, bool clear, uint32_t argb) {
     if (!R.in_frame || !tex_ok(t) || !arc__textures[t.id].target || R.target_depth >= 15) return;
@@ -1749,7 +1754,8 @@ void arc__bill_frame(void);
 uint64_t arc__gfx_frame;   /* frames begun: caches use it to avoid freeing what this frame already drew with */
 void arc__gfx_begin(void) {
     g_last_valid = false; arc__bill_frame(); arc__gfx_frame++;
-    R.raw_count = R.line_count = R.v2_count = R.b2_count = R.imm_count = R.pass_count = R.bone_count = R.lt_count = 0; R.lt_ntiles = 0; R.lt_nidx = 0; R.lsh_count = 0;
+    R.raw_count = R.line_count = R.v2_count = R.b2_count = R.imm_count = R.pass_count = R.bone_count = R.lt_count = 0; R.ltri_count = 0;
+    g_lines_thick = 0; g_lines_wmax = 0; g_lines_gmax = 0; R.lt_ntiles = 0; R.lt_nidx = 0; R.lsh_count = 0;
     g_plain_first = -1; g_plain_n = 0;
     R.line_push = 0; R.npats = 0; R.sdf2d = 0;
     arc__draw_cell = 0; g_culled = g_static_draws = 0; memset(g_lod_n, 0, sizeof g_lod_n);
@@ -2045,12 +2051,102 @@ static arc_v3 line_push(arc_v3 p) {   /* the same pixel, further away (see arc_s
     if (R.view_persp) return arc_v3_add(R.eye, arc_v3_scale(d, 1.0f + R.line_push));
     return arc_v3_add(p, arc_v3_scale(R.view_fwd, arc_v3_dot(d, R.view_fwd) * R.line_push));
 }
+/* ---- 0.10.11 thick and glowing lines (Vector Trader) ----
+   A line wider than one pixel is a strip of triangles facing the camera, built here from the current camera: its
+   world width at each end is width * (one pixel at that end's depth: 2 w / (target height * proj[1][1])). A one-pixel
+   soft edge (colour alpha 255 -> 0) runs round it; square caps reach half the width past each end, round caps are
+   half discs, butt caps stop at the end. One shape for 3D and 2D: line_shape() lists its corners as (end, along px,
+   across px, alpha) and the caller places them. */
+void arc_set_line_width(float pixels) { R.line_width = pixels > 1.0f ? (pixels < 256.0f ? pixels : 256.0f) : 1.0f; }
+void arc_set_line_glow(float intensity) { R.line_glow = intensity > 0.0f ? (intensity < 64.0f ? intensity : 64.0f) : 1.0f; }
+void arc_set_line_cap(arc_line_cap cap) { R.line_cap = (int)cap >= 0 && (int)cap <= 2 ? (int)cap : 0; R.line_cap2d_set = true; }
+float arc_line_width(void) { return R.line_width > 1.0f ? R.line_width : 1.0f; }
+typedef struct { int end; float along, across; uint8_t a; } line_pt;
+#define LINE_ROUND_SEG 6
+static int line_shape(float width, int cap, line_pt *out) {   /* triangle corners, 3 per triangle; returns the count */
+    float h = width * 0.5f - 0.5f, f = 1.0f; if (h < 0.25f) h = 0.25f;
+    int n = 0;
+    #define LP(E, AL, AC, A) (out[n].end = (E), out[n].along = (AL), out[n].across = (AC), out[n].a = (uint8_t)(A), n++)
+    float e = cap == ARC_LINE_CAP_SQUARE ? h : 0.0f;
+    if (cap != ARC_LINE_CAP_ROUND) {   /* 3 x 3 cells: edge rows and columns fade out */
+        float ac[4] = { -(h + f), -h, h, h + f }, al[4] = { -(e + f), -e, e, e + f };
+        int en[4] = { 0, 0, 1, 1 };
+        for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++) {
+            int R0 = r, R1 = r + 1, C0 = c, C1 = c + 1;
+            #define ALPHA(RR, CC) (((RR) == 1 || (RR) == 2) && ((CC) == 1 || (CC) == 2) ? 255 : 0)
+            LP(en[R0], al[R0], ac[C0], ALPHA(R0, C0)); LP(en[R0], al[R0], ac[C1], ALPHA(R0, C1)); LP(en[R1], al[R1], ac[C1], ALPHA(R1, C1));
+            LP(en[R0], al[R0], ac[C0], ALPHA(R0, C0)); LP(en[R1], al[R1], ac[C1], ALPHA(R1, C1)); LP(en[R1], al[R1], ac[C0], ALPHA(R1, C0));
+            #undef ALPHA
+        }
+    } else {
+        float ac[4] = { -(h + f), -h, h, h + f };
+        for (int c = 0; c < 3; c++) {   /* the body, end to end */
+            int a0 = (c == 1 || c == 2) ? 255 : 0, a1 = (c + 1 == 1 || c + 1 == 2) ? 255 : 0;
+            LP(0, 0, ac[c], a0); LP(0, 0, ac[c + 1], a1); LP(1, 0, ac[c + 1], a1);
+            LP(0, 0, ac[c], a0); LP(1, 0, ac[c + 1], a1); LP(1, 0, ac[c], a0);
+        }
+        for (int end = 0; end < 2; end++) {   /* half discs: a fan, then a fading ring */
+            float sgn = end ? 1.0f : -1.0f;
+            for (int k = 0; k < LINE_ROUND_SEG; k++) {
+                float t0 = (float)k / LINE_ROUND_SEG * ARC_PI, t1 = (float)(k + 1) / LINE_ROUND_SEG * ARC_PI;
+                float s0 = sinf(t0) * sgn, c0 = cosf(t0), s1 = sinf(t1) * sgn, c1 = cosf(t1);
+                LP(end, 0, 0, 255); LP(end, s0 * h, c0 * h, 255); LP(end, s1 * h, c1 * h, 255);
+                LP(end, s0 * h, c0 * h, 255); LP(end, s0 * (h + f), c0 * (h + f), 0); LP(end, s1 * (h + f), c1 * (h + f), 0);
+                LP(end, s0 * h, c0 * h, 255); LP(end, s1 * (h + f), c1 * (h + f), 0); LP(end, s1 * h, c1 * h, 255);
+            }
+        }
+    }
+    #undef LP
+    return n;
+}
+#define LINE_SHAPE_MAX (2 * LINE_ROUND_SEG * 9 + 18)
+static void line_stats(float w) {
+    if (w > g_lines_wmax) g_lines_wmax = w;
+    if (R.line_glow > g_lines_gmax) g_lines_gmax = R.line_glow;
+}
+static void thick_line(arc_v3 a, arc_v3 b, uint32_t c) {
+    float wa = arc_m4_mul_v4(R.view_proj, (arc_v4){ a.x, a.y, a.z, 1 }).w, wb = arc_m4_mul_v4(R.view_proj, (arc_v4){ b.x, b.y, b.z, 1 }).w;
+    const float eps = 1e-4f;
+    if (wa < eps && wb < eps) return;   /* behind the camera */
+    if (wa < eps) { float t = (eps - wa) / (wb - wa); a = arc_v3_lerp(a, b, t); wa = eps; }
+    if (wb < eps) { float t = (eps - wb) / (wa - wb); b = arc_v3_lerp(b, a, t); wb = eps; }
+    arc_v3 d = arc_v3_sub(b, a); float len = arc_v3_len(d); if (len < 1e-12f) return;
+    d = arc_v3_scale(d, 1.0f / len);
+    float H = (float)arc_target_height(), p11 = R.proj.m[5];
+    if (H < 1) H = 1;
+    if (fabsf(p11) < 1e-12f) p11 = 1;
+    arc_v3 P[2] = { a, b }, side[2]; float px[2] = { 2.0f * wa / (H * fabsf(p11)), 2.0f * wb / (H * fabsf(p11)) };
+    for (int k = 0; k < 2; k++) {
+        arc_v3 view = R.view_persp ? arc_v3_sub(P[k], R.eye) : R.view_fwd;
+        arc_v3 sd = arc_v3_cross(d, view); float l = arc_v3_len(sd);
+        if (l < 1e-9f) { sd = arc_v3_cross(d, fabsf(d.y) < 0.9f ? arc_v3_make(0, 1, 0) : arc_v3_make(1, 0, 0)); l = arc_v3_len(sd); }
+        side[k] = arc_v3_scale(sd, 1.0f / l);
+    }
+    line_pt sh[LINE_SHAPE_MAX]; int n = line_shape(R.line_width, R.line_cap, sh);
+    if (!R.ltris) R.ltris = (arc__line_vertex *)arc__xalloc(sizeof(arc__line_vertex) * ARC__MAX_LTRIS);
+    if (R.ltri_count + n > ARC__MAX_LTRIS) { over_limit(LIM_LINES); return; }
+    arc__line_vertex *v = &R.ltris[R.ltri_count]; R.ltri_count += n;
+    for (int i = 0; i < n; i++) {
+        int e = sh[i].end; float s = px[e];
+        arc_v3 q = arc_v3_add(P[e], arc_v3_add(arc_v3_scale(d, sh[i].along * s), arc_v3_scale(side[e], sh[i].across * s)));
+        v[i].x = q.x; v[i].y = q.y; v[i].z = q.z; v[i].color = (c & 0x00FFFFFFu) | ((uint32_t)(((c >> 24) * sh[i].a + 127) / 255) << 24); v[i].gain = R.line_glow;
+    }
+    g_lines_thick++;
+}
 void arc_draw_line(arc_v3 a, arc_v3 b, uint32_t rgb) {
-    if (R.line_count + 2 > ARC__MAX_LINES * 2) { over_limit(LIM_LINES); return; }
     if (R.line_push > 0) { a = line_push(a); b = line_push(b); }
     uint32_t c = arc__to_abgr(rgb);
+    if (R.line_glow <= 0.0f) R.line_glow = 1.0f;
+    line_stats(R.line_width > 1.0f ? R.line_width : 1.0f);
+    if (R.line_width > 1.0f) { thick_line(a, b, c); return; }
+    if (R.line_count + 2 > ARC__MAX_LINES * 2) { over_limit(LIM_LINES); return; }
     arc__line_vertex *v = &R.lines[R.line_count]; R.line_count += 2;
-    v[0].x = a.x; v[0].y = a.y; v[0].z = a.z; v[0].color = c; v[1].x = b.x; v[1].y = b.y; v[1].z = b.z; v[1].color = c;
+    v[0].x = a.x; v[0].y = a.y; v[0].z = a.z; v[0].color = c; v[0].gain = R.line_glow;
+    v[1].x = b.x; v[1].y = b.y; v[1].z = b.z; v[1].color = c; v[1].gain = R.line_glow;
+}
+void arc_draw_lines(const arc_v3 *pts, int count, arc_m4 model, uint32_t rgb) {
+    if (!pts) return;
+    for (int i = 0; i + 1 < count; i += 2) arc_draw_line(arc_m4_mul_point(model, pts[i]), arc_m4_mul_point(model, pts[i + 1]), rgb);
 }
 void arc_draw_box_lines(arc_v3 lo, arc_v3 hi, uint32_t rgb) {
     arc_v3 p[8]; for (int i = 0; i < 8; i++) p[i] = arc_v3_make(i & 1 ? hi.x : lo.x, i & 2 ? hi.y : lo.y, i & 4 ? hi.z : lo.z);
@@ -2238,8 +2334,22 @@ void arc_draw_rect_lines(float x, float y, float w, float h, uint32_t c) {
 }
 void arc_draw_line2d(float x0, float y0, float x1, float y1, float t, uint32_t c) {
     float dx = x1 - x0, dy = y1 - y0, l = sqrtf(dx * dx + dy * dy); if (l < 1e-6f) return;
-    float nx = -dy / l * t * 0.5f, ny = dx / l * t * 0.5f;
-    quad(TEX_WHITE, x0 + nx, y0 + ny, x1 + nx, y1 + ny, x1 - nx, y1 - ny, x0 - nx, y0 - ny, 0, 0, 1, 1, c);
+    if (t < 1.5f) {   /* thin: the hard-edged quad of old */
+        float nx = -dy / l * t * 0.5f, ny = dx / l * t * 0.5f;
+        quad(TEX_WHITE, x0 + nx, y0 + ny, x1 + nx, y1 + ny, x1 - nx, y1 - ny, x0 - nx, y0 - ny, 0, 0, 1, 1, c);
+        return;
+    }
+    /* 0.10.11: 1.5 pixels and wider get a soft edge and arc_set_line_cap's ends (butt ends by default, as before) */
+    line_pt sh[LINE_SHAPE_MAX]; int cap = R.line_cap2d_set ? R.line_cap : ARC_LINE_CAP_BUTT;
+    int n = line_shape(t, cap, sh);
+    arc__vert2d *v = v2_alloc(TEX_WHITE, n); if (!v) return;
+    uint32_t col = arc__to_abgr(c); float ux = dx / l, uy = dy / l, vx = -uy, vy = ux, X[2] = { x0, x1 }, Y[2] = { y0, y1 };
+    for (int i = 0; i < n; i++) {
+        int e = sh[i].end;
+        v[i].x = X[e] + ux * sh[i].along + vx * sh[i].across; v[i].y = Y[e] + uy * sh[i].along + vy * sh[i].across;
+        v[i].u = 0.5f; v[i].v = 0.5f;
+        v[i].color = (col & 0x00FFFFFFu) | ((uint32_t)(((col >> 24) * sh[i].a + 127) / 255) << 24);
+    }
 }
 void arc_draw_sprite(arc_texture t, float x, float y, float w, float h, float u0, float v0, float u1, float v1, uint32_t tint) {
     fr_quad(true, x, y, w, h, tint, t.id);
@@ -2546,7 +2656,7 @@ static int refl_pass_one(int nb, int vport) {
     M->view_proj = arc_m4_mul(P->view_proj, ref); M->view_proj_std = arc_m4_mul(P->view_proj_std, ref); M->eye.y = 2 * y - P->eye.y;
     memset(M->post, 0, sizeof M->post); M->soft = 0; M->shadow[0] = 0;
     if (M->sky[3] > 0) memcpy(M->sky_ivp, arc_m4_inverse(M->view_proj_std).m, sizeof M->sky_ivp);
-    M->imm_count = M->line_count = M->b2_count = 0;
+    M->imm_count = M->line_count = M->b2_count = M->ltri_count = 0;
     M->mirror = 1; M->clip[0] = 0; M->clip[1] = 1; M->clip[2] = 0; M->clip[3] = -(y + 0.005f); M->refl_tex = 0;
     pass_lights(M, P->nlights, vport);   /* its own tiles: the mirrored view */
     M->lsh_n = 0;   /* no light shadows in the mirror (as no sun shadows) */
@@ -2691,6 +2801,7 @@ static void gfx_end_mode(int mode) {
     f.mesh_batches = R.mesh_batches; f.mesh_batch_count = nb; f.pats = R.pats; f.pat_count = R.npats;
     f.imm = R.imm; f.imm_count = R.imm_count;
     f.lines = R.lines; f.line_vertex_count = R.line_count;
+    f.ltris = R.ltris; f.ltri_vertex_count = R.ltri_count;
     f.verts2d = R.v2; f.vert2d_count = R.v2_count;
     f.batches2d = R.b2; f.batch2d_count = R.b2_count;
     f.bones = R.bones; f.bone_count = R.bone_count;
@@ -2706,11 +2817,11 @@ static void gfx_end_mode(int mode) {
     int passes_drawn = 0;
     for (int pi = 0; pi < R.pass_count; pi++) {
         const arc__pass *p = &R.passes[pi];
-        if (p->mb_count || p->tb_count || p->imm_count || p->line_count || p->b2_count || p->clear) passes_drawn++;
+        if (p->mb_count || p->tb_count || p->imm_count || p->line_count || p->ltri_count || p->b2_count || p->clear) passes_drawn++;
     }
-    R.stats.draw_calls = nb + R.b2_count + (R.imm_count ? 1 : 0) + (R.line_count ? 1 : 0);
+    R.stats.draw_calls = nb + R.b2_count + (R.imm_count ? 1 : 0) + (R.line_count ? 1 : 0) + (R.ltri_count ? 1 : 0);
     R.stats.instances = R.raw_count; R.stats.triangles = tris + R.v2_count / 3;
-    R.stats.lines = R.line_count / 2; R.stats.quads = R.v2_count / 6; R.stats.passes = passes_drawn;
+    R.stats.lines = R.line_count / 2 + g_lines_thick; R.stats.quads = R.v2_count / 6; R.stats.passes = passes_drawn;
     R.stats.dropped = g_dropped; g_dropped = 0;
     R.stats.culled = g_culled; memcpy(R.stats.lod_instances, g_lod_n, sizeof g_lod_n); R.stats.static_draws = g_static_draws;
     for (int i = 0; i < R.pending_shot_count; i++) { bool ok = arc_screenshot(R.pending_shots[i]); printf(ok ? "ARC ok shot %s\n" : "ARC error shot %s\n", R.pending_shots[i]); }
@@ -3085,6 +3196,15 @@ void arc__frame_json(arc_json *j) {
     arc_json_arr_k(j, "size"); arc_json_num(j, W); arc_json_num(j, H); arc_json_end(j);
     int targets = 0; for (int pi = 0; pi < R.pass_count; pi++) targets += R.passes[pi].target != 0;
     arc_json_num_k(j, "passes", R.pass_count); arc_json_num_k(j, "target_passes", targets);
+    {   /* 0.10.11 lines: thin and thick segments this frame, the widest (pixels) and the brightest glow; dropped draws */
+        int thin = 0, tv = 0; for (int pi = 0; pi < R.pass_count; pi++) { thin += R.passes[pi].line_count / 2; tv += R.passes[pi].ltri_count; }
+        arc_json_obj_k(j, "lines");
+        arc_json_num_k(j, "count", thin + g_lines_thick); arc_json_num_k(j, "thick", g_lines_thick);
+        arc_json_num_k(j, "width_max", g_lines_wmax > 0 ? g_lines_wmax : (thin ? 1.0f : 0.0f)); arc_json_num_k(j, "glow_max", g_lines_gmax);
+        arc_json_num_k(j, "triangles", tv / 3);
+        arc_json_end(j);
+        arc_json_num_k(j, "dropped", R.stats.dropped);
+    }
     if (P) {
         arc_json_obj_k(j, "camera");
         arc_json_arr_k(j, "eye"); arc_json_num(j, P->eye.x); arc_json_num(j, P->eye.y); arc_json_num(j, P->eye.z); arc_json_end(j);

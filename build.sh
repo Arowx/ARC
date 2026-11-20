@@ -81,6 +81,10 @@ case "$target" in
             python3 tools/arc_check.py tests/level_launch_check.md --exe build/level_headless > build/level_launch_check.txt || { cat build/level_launch_check.txt; exit 1; }; tail -1 build/level_launch_check.txt
             ${CC:-cc} $CFLAGS -D_GNU_SOURCE -DARC_HEADLESS_ONLY tests/split_game.c src/arc.c -o build/split_headless -lm   # 0.10.2 split-screen viewports
             python3 tools/arc_check.py tests/split_check.md --exe build/split_headless > build/split_check.txt || { cat build/split_check.txt; exit 1; }; tail -1 build/split_check.txt
+            ${CC:-cc} $CFLAGS -D_GNU_SOURCE -DARC_HEADLESS_ONLY samples/demo/demo.c src/arc.c -o build/demo_headless -lm   # 0.10.11 lines and touch (Vector Trader)
+            for c in line touch; do python3 tools/arc_check.py tests/${c}_check.md --exe build/demo_headless > build/${c}_check.txt || { cat build/${c}_check.txt; exit 1; }; tail -1 build/${c}_check.txt; done
+            python3 tests/line_width_test.py build/demo_headless || exit 1
+            python3 tests/touch_replay_test.py build/demo_headless || exit 1
             python3 tools/arc_doctor.py tests/doctor_fixture > build/doctor.txt || true; grep -q 'asset "missing.png" not found' build/doctor.txt && grep -q 'rand() in game code' build/doctor.txt && grep -q 'inside tick()' build/doctor.txt && ! grep -qE 'comment_only|arc_packs.txt|lvl.arcpak|view.png|notes_out|made_at_run_time' build/doctor.txt && grep -q 'uses ARC 0.10.6' build/doctor.txt && echo "ARC ok doctor" || { echo "ARC error doctor"; cat build/doctor.txt; exit 1; }
             python3 tools/gen_api_docs.py --check   # docs/API.md, docs/QUICK.md and docs/api/*.md match include/arc.h
             python3 -c "import re;s=open('docs/QUICK.md').read();open('build/quick_example.c','w').write(re.search(r'\`\`\`c\n(.*?)\`\`\`',s,re.S).group(1))"

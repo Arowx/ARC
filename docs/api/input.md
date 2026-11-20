@@ -65,3 +65,19 @@ Touch (web): the first finger drives the mouse and MOUSE_LEFT. True while the la
 ```c
 ARC_API bool arc_touch_mode(void);
 ```
+
+Multi-touch (0.10.11): every finger, read in tick() like the keys, recorded and replayed like other input (web and
+   Windows touch screens; headless: `touch down ID X Y` / `touch move ID X Y` / `touch up ID`). id is small (0, 1, ...)
+   and stays while the finger is down; a lifted finger's id is reused. x, y are window pixels (as the mouse, before
+   viewports); start_x, start_y where it went down. A finger lifted this tick is still listed for this tick with
+   released set (at its last place), so `pressed` / `released` work like arc_key_pressed / _released, and a tap shorter
+   than a tick is still seen for one tick. The first finger still drives the mouse and MOUSE_LEFT. arc_ui buttons
+   answer any finger, so a thumb steering elsewhere doesn't block a tap. dump.input lists them.
+
+```c
+#define ARC_TOUCH_MAX 10
+typedef struct { int id; float x, y; float start_x, start_y; bool pressed; bool released; } arc_touch;
+ARC_API int arc_touch_count(void);    // fingers listed this tick (down, or lifted this tick)
+ARC_API const arc_touch *arc_touch_get(int i);    // NULL past the end; ordered by when they went down
+ARC_API const arc_touch *arc_touch_find(int id);    // NULL: no such finger this tick
+```

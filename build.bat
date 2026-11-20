@@ -104,6 +104,12 @@ python tools\arc_check.py tests\level_launch_check.md --exe build\level_headless
 rem 0.10.2: split-screen viewports (tests\split_game.c)
 cl %CFLAGS% /DARC_HEADLESS_ONLY tests\split_game.c src\arc.c /Fo:build\ /Fe:build\split_headless.exe || exit /b 1
 python tools\arc_check.py tests\split_check.md --exe build\split_headless.exe || exit /b 1
+rem 0.10.11: thick lines and multi-touch (Vector Trader) on the demo
+cl %CFLAGS% /DARC_HEADLESS_ONLY samples\demo\demo.c src\arc.c /Fo:build\ /Fe:build\demo_headless.exe || exit /b 1
+python tools\arc_check.py tests\line_check.md --exe build\demo_headless.exe || exit /b 1
+python tools\arc_check.py tests\touch_check.md --exe build\demo_headless.exe || exit /b 1
+python tests\line_width_test.py build\demo_headless.exe || exit /b 1
+python tests\touch_replay_test.py build\demo_headless.exe || exit /b 1
 python tools\arc_doctor.py tests\doctor_fixture > build\doctor.txt
 findstr /c:"missing.png" build\doctor.txt >nul || (echo ARC error doctor & exit /b 1)
 findstr /c:"rand() in game code" build\doctor.txt >nul || (echo ARC error doctor & exit /b 1)
