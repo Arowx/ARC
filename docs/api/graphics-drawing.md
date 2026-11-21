@@ -64,7 +64,16 @@ typedef struct { int kind; uint32_t rgb; float scale, width, angle, offset; bool
 
 ```c
 ARC_API void arc_paint_parts_rule(const char *pattern, int part);
-typedef struct { uint32_t tint; float recolour; float emissive; float whiten; float transparency; bool additive; arc_anim anim; const arc_pose *pose; float dissolve; uint32_t dissolve_rgb; float dissolve_glow; float dissolve_width; float hologram; float scroll_u, scroll_v; float outline; uint32_t outline_rgb; int depth; float depth_pull; int layer; int order; float xray; uint32_t xray_rgb; float uv_rotate, uv_scale; arc_v2 uv_offset; bool uv_mirror; arc_texture paint_mask; uint32_t tint2; uint32_t tint3; int tex_layer; float darken; float charred; bool no_world_mask; arc_paint_pattern pattern; bool armour_mask; } arc_mesh_style;
+typedef struct { uint32_t tint; float recolour; float emissive; float whiten; float transparency; bool additive; arc_anim anim; const arc_pose *pose; float dissolve; uint32_t dissolve_rgb; float dissolve_glow; float dissolve_width; float hologram; float scroll_u, scroll_v; float outline; uint32_t outline_rgb; int depth; float depth_pull; int layer; int order; float xray; uint32_t xray_rgb; float uv_rotate, uv_scale; arc_v2 uv_offset; bool uv_mirror; arc_texture paint_mask; uint32_t tint2; uint32_t tint3; int tex_layer; float darken; float charred; bool no_world_mask; arc_paint_pattern pattern; bool armour_mask; arc_texture emissive_mask; uint32_t glow_rgb[3]; float glow[3]; } arc_mesh_style;
+```
+
+0.10.15 a mesh's own glow mask, used when a draw's arc_mesh_style.emissive_mask is {0} (a style's mask replaces it).
+   arc_import.py --glow-mask IMG stores one in the .arcm, and arc_mesh_load sets it. {0} removes it. The mesh does not
+   own the texture (free it yourself), except one loaded from the file. arc_mesh_glow_mask reads it back.
+
+```c
+ARC_API void arc_mesh_set_glow_mask(arc_mesh m, arc_texture mask);
+ARC_API arc_texture arc_mesh_glow_mask(arc_mesh m);
 ```
 
 0.9.9: a mesh takes its colour from a texture array (arc_texture_array) instead of its texture, at the layer each draw

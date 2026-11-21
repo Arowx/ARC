@@ -11,7 +11,7 @@
 
 static const char *HLSL =
     "cbuffer F : register(b0) { column_major float4x4 vp; float4 eye, ld, lc, amb, fc, fog, rim, screen, misc; column_major float4x4 svp; float4 sh; float4 envt, envh, envb; float4 nlt; float4 tm; column_major float4x4 cvp[3]; float4 cp[3]; float4 shc; column_major float4x4 ivp; float4 soft; float4 clipp, rpar; float4 wm0, wm1, cut0, cut1, cut2; };\n"
-    "cbuffer M : register(b2) { float4 m0, m1, m2, m3, m4, m5, m6, m7, m8, m9, m10, m11; float4 pat[4]; float4 pjm[32]; };\n"   /* 0.10.1 paint pattern (see arc__pattern) */   /* 0.9.9 m10.w: colour by layer; m11.x: this mesh is cut away */   /* 0.9.6 m9: splat layer scales; m10: sharpness, layers, on */   /* 0.8.9 m8: tint3 rgb, w = blue on */   /* 0.8.8 m7: paint tint2 rgb, w = on (mask t13) */
+    "cbuffer M : register(b2) { float4 m0, m1, m2, m3, m4, m5, m6, m7, m8, m9, m10, m11; float4 pat[4]; float4 pjm[32]; float4 glw[3]; };\n"   /* 0.10.15 glw: glow mask groups (colour x strength), glw[0].w on (the mask in etex, t7) */   /* 0.10.1 paint pattern (see arc__pattern) */   /* 0.9.9 m10.w: colour by layer; m11.x: this mesh is cut away */   /* 0.9.6 m9: splat layer scales; m10: sharpness, layers, on */   /* 0.8.9 m8: tint3 rgb, w = blue on */   /* 0.8.8 m7: paint tint2 rgb, w = on (mask t13) */
     "Texture2D ptex : register(t13); SamplerState smp4 : register(s4);\n"   /* 0.8.7 m6.x: the mesh's reflection amount; 0.8.8 m6.y: colour world scale */
     "Texture2D rtex : register(t12); SamplerState smp3 : register(s3);\n"   /* 0.8.7 the mirror pass's picture (clamped, mips) */   /* material (arc__mesh_rec.mat; m2.w = has one); 0.8.4 m3, m4: as GL's u_m3, u_m4 */
     "Texture2D ntex : register(t5); Texture2D otex : register(t6); Texture2D etex : register(t7); SamplerState smp2 : register(s2);\n"
@@ -277,7 +277,8 @@ static const char *HLSL =
     "    lit = base * (amb.rgb * ao + lc.rgb * diff * vis + i.t.w) + rim.rgb * r;\n"
     "    if (nlt.x > 0.5) lit += local_lights(i.wp, n, base, false, n, 1.0, 1.0, base);\n"
     "  }\n"
-    "  if (m2.w > 0.5) lit += m2.rgb * (m1.w > 0.5 ? etex.Sample(smp2, i.uv).rgb : float3(1, 1, 1));\n"
+    "  if (glw[0].w > 0.5) { float3 gm = etex.Sample(smp2, i.uv).rgb; lit += glw[0].rgb * gm.r + glw[1].rgb * gm.g + glw[2].rgb * gm.b; }\n"   /* 0.10.15 */
+    "  else if (m2.w > 0.5) lit += m2.rgb * (m1.w > 0.5 ? etex.Sample(smp2, i.uv).rgb : float3(1, 1, 1));\n"
     "  if (glow > 0.0) { int e = (int)i.fx1.z; lit += float3(e & 255, (e >> 8) & 255, (e >> 16) & 255) / 255.0 * glow; }\n"
     "  if (rpar.x > 0.0 && m6.x > 0.0) {\n"   /* 0.8.7 planar reflection: the mirror pass's picture at this pixel */
     "    float F = 0.6 + 0.4 * pow5(1.0 - max(dot(n, normalize(eye.xyz - i.wp)), 0.0));\n"
@@ -716,7 +717,7 @@ static bool d3d_init(void) {
     REL(b_vm); REL(b_vl); REL(b_vq); REL(b_pm); REL(b_pc); REL(b_pt);
 
     D.cb = make_buffer(sizeof(d3d_cb), D3D11_BIND_CONSTANT_BUFFER, 1, NULL);
-    D.cb_mat = make_buffer(768, D3D11_BIND_CONSTANT_BUFFER, 1, NULL);   /* (0.9.9: m11; 0.10.1: pat, pjm) */
+    D.cb_mat = make_buffer(816, D3D11_BIND_CONSTANT_BUFFER, 1, NULL);   /* (0.9.9: m11; 0.10.1: pat, pjm; 0.10.15: glw) */
     D.cb_quad = make_buffer(16, D3D11_BIND_CONSTANT_BUFFER, 1, NULL); D.quad_sdf = -1;
     D.cb_post = make_buffer(368, D3D11_BIND_CONSTANT_BUFFER, 1, NULL);
     D3D11_RASTERIZER_DESC rd = { 0 }; rd.FillMode = D3D11_FILL_SOLID; rd.CullMode = D3D11_CULL_BACK; rd.FrontCounterClockwise = TRUE; rd.DepthClipEnable = TRUE; rd.ScissorEnable = TRUE;
@@ -945,10 +946,10 @@ static void d3d_pass_cb(const arc__pass *P, int pw, int ph, bool opaque) {
     ID3D11DeviceContext_PSSetShaderResources(D.ctx, 14, 3, D.lt_srv);
     { ID3D11ShaderResourceView *ls = lsh ? D.lsh_srv : NULL; ID3D11DeviceContext_PSSetShaderResources(D.ctx, 17, 1, &ls); }
 }
-static struct { uint32_t paint_tex, tint2, tint3; const arc__pattern *pat; } g_paint;   /* 0.8.8 set per batch before d3d_material */
+static struct { uint32_t paint_tex, tint2, tint3; const arc__pattern *pat; const arc__glow *glow; } g_paint;   /* 0.8.8 set per batch before d3d_material */
 /* a mesh's material: constants (b2) and maps (t5-t7, white when missing); NULL = none */
 static void d3d_material(const arc__mesh_rec *M) {
-    ID3D11DeviceContext *c = D.ctx; bool on = M && M->has_mat; float m[192] = { 0 };
+    ID3D11DeviceContext *c = D.ctx; bool on = M && M->has_mat; float m[204] = { 0 };
     if (on) { memcpy(m, M->mat, 32); m[8] = M->mat[ARC__MAT_ER]; m[9] = M->mat[ARC__MAT_EG]; m[10] = M->mat[ARC__MAT_EB]; m[11] = 1; }
     if (on && M->mat_tex[0] && D.texs[M->mat_tex[0]].srv && D.texs[M->mat_tex[0]].fmt == ARC_TEXFMT_BC5) m[11] = 2;   /* 0.7.1: BC5 normal map: Z rebuilt */
     uint32_t dt = 0, mt = 0;   /* 0.8.4 m3: detail mode, scale, strength, rotate; m4: base mode, rotate, contrast, detail contrast */
@@ -973,7 +974,9 @@ static void d3d_material(const arc__mesh_rec *M) {
     }
     m[44] = D.cut_on && M && M->cutaway ? 1.0f : 0.0f;   /* 0.9.9 */
     if (g_paint.pat) { memcpy(m + 48, g_paint.pat->p, sizeof g_paint.pat->p); memcpy(m + 64, g_paint.pat->jm, sizeof g_paint.pat->jm); }   /* 0.10.1 */
-    memcpy(mm.pData, m, 768);
+    uint32_t gt = g_paint.glow && g_paint.glow->tex < ARC__MAX_TEXTURES && D.texs[g_paint.glow->tex].srv ? g_paint.glow->tex : 0;   /* 0.10.15 */
+    if (gt) { memcpy(m + 192, g_paint.glow->c, sizeof g_paint.glow->c); m[195] = 1; }
+    memcpy(mm.pData, m, 816);
     ID3D11ShaderResourceView *psrv = D.texs[pt ? pt : 1].srv; ID3D11DeviceContext_PSSetShaderResources(c, 13, 1, &psrv);
     ID3D11SamplerState *s4 = d3d_sampler(&D.texs[pt ? pt : 1]); ID3D11DeviceContext_PSSetSamplers(c, 4, 1, &s4);   /* the mask's own filtering */ ID3D11DeviceContext_Unmap(c, (ID3D11Resource *)D.cb_mat, 0); }
     ID3D11ShaderResourceView *dsrv = D.texs[dt ? dt : 1].srv; ID3D11DeviceContext_PSSetShaderResources(c, 10, 1, &dsrv);
@@ -981,6 +984,7 @@ static void d3d_material(const arc__mesh_rec *M) {
     ID3D11DeviceContext_PSSetConstantBuffers(c, 2, 1, &D.cb_mat); ID3D11DeviceContext_VSSetConstantBuffers(c, 2, 1, &D.cb_mat);   /* (0.10.1: the vertex shader reads the pattern's part mask) */
     ID3D11ShaderResourceView *srv[3];
     for (int i = 0; i < 3; i++) { uint32_t t = on && M->mat_tex[i] && D.texs[M->mat_tex[i]].srv ? M->mat_tex[i] : 1; srv[i] = D.texs[t].srv; }
+    { const arc__glow *g = g_paint.glow; if (g && g->tex < ARC__MAX_TEXTURES && D.texs[g->tex].srv) srv[2] = D.texs[g->tex].srv; }   /* 0.10.15 the glow mask stands in for the emissive map */
     ID3D11DeviceContext_PSSetShaderResources(c, 5, 3, srv);
     ID3D11SamplerState *s2 = D.smp[7]; ID3D11DeviceContext_PSSetSamplers(c, 2, 1, &s2);
 }
@@ -996,6 +1000,7 @@ static void d3d_draw_batches(const arc__frame_data *f, int first, int count, con
         ID3D11DeviceContext_PSSetShaderResources(c, 0, 1, &t->srv);
         ID3D11SamplerState *smp = d3d_sampler(t);
         g_paint.paint_tex = mb->paint_tex; g_paint.tint2 = mb->tint2; g_paint.tint3 = mb->tint3; g_paint.pat = mb->pat > 0 && mb->pat <= f->pat_count ? &f->pats[mb->pat - 1] : NULL;
+        g_paint.glow = mb->glow > 0 && mb->glow <= f->glow_count ? &f->glows[mb->glow - 1] : NULL;   /* 0.10.15 */
         if (M->mat2[ARC__MAT2_BMODE] > 0.5f) smp = D.smp[((t->flags & ARC_TEX_SMOOTH) ? 1 : 0) | 2 | ((t->flags & ARC_TEX_MIPMAPS) && !t->rtv ? 4 : 0)];   /* 0.8.8: hex / world colour repeats */
         ID3D11DeviceContext_PSSetSamplers(c, 0, 1, &smp);
         d3d_material(M);
@@ -1013,7 +1018,7 @@ static void d3d_draw_batches(const arc__frame_data *f, int first, int count, con
         ID3D11DeviceContext_RSSetState(c, (M->double_sided || (D.cut_on && M->cutaway)) ? D.rs_none : (mb->flip ^ P->mirror) ? D.rs_cull_cw : D.rs_cull);   /* (0.8.7 mirror passes wind the other way; 0.9.9 cut meshes show their backs: the cap) */
         ID3D11DeviceContext_DrawIndexedInstanced(c, (UINT)dm->icount, (UINT)mb->count, 0, 0, (UINT)mb->first);
     }
-    ID3D11DeviceContext_RSSetState(c, D.rs_cull); g_paint.paint_tex = g_paint.tint2 = g_paint.tint3 = 0; g_paint.pat = NULL;
+    ID3D11DeviceContext_RSSetState(c, D.rs_cull); g_paint.paint_tex = g_paint.tint2 = g_paint.tint3 = 0; g_paint.pat = NULL; g_paint.glow = NULL;
     ID3D11DeviceContext_OMSetBlendState(c, D.bs[ARC__BLEND_NONE], bf, 0xFFFFFFFF); ID3D11DeviceContext_OMSetDepthStencilState(c, D.ds_on, 0);
     if (opaque == 0) d3d_pass_cb(P, pw, ph, true);
 }

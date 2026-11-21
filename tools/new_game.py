@@ -18,7 +18,7 @@ The new project gets:
     tests/acceptance.md  with --template: runnable checks of the template's rules (tools/arc_check.py)
     release.json     settings for tools/arc_release.py (fill in "itch": "user/game")
     assets/          files the game loads at runtime (copied next to the exe / packed into the web build)
-    build.bat        Windows (Visual Studio):  build.bat [headless|web|release]
+    build.bat        Windows (Visual Studio):  build.bat [run|headless|web|release] (plain: offers to launch)
     build.sh         Linux/WSL/macOS shell:    ./build.sh [linux|headless|win|web|release]
     AGENTS.md        instructions for AI agents working on this game
     arc.txt          where ARC lives (one line); build scripts read it
@@ -42,7 +42,9 @@ def template_summary(t):   # first line of the template's header comment, after 
 
 BUILD_BAT = r'''@echo off
 rem Build {title} with ARC (MSVC; finds Visual Studio itself, or run from a Developer Command Prompt).
-rem   build.bat            -> build\{name}.exe   (Direct3D 11 window; --headless also works)
+rem   build.bat            -> build\{name}.exe   (Direct3D 11 window; --headless also works), then asks
+rem                           "Launch {title} now? [Y/N]" (No after 15 s; set ARC_NO_LAUNCH=1 never to ask)
+rem   build.bat run        -> build\{name}.exe, then launch it without asking
 rem   build.bat headless   -> build\{name}_headless.exe (no window code)
 rem   build.bat web        -> build\web\index.html (+ .js .wasm .data; needs emsdk: on PATH, in EMSDK, or C:\emsdk)
 rem   build.bat release    -> both, then dist\{zipname}-windows.zip (exe + assets) and dist\{zipname}-web.zip
@@ -69,8 +71,19 @@ if /i "%1"=="web" goto web_only
 if /i "%1"=="release" goto release
 call :find_cl
 if errorlevel 1 exit /b 1
-call :build_win %1
+if /i "%1"=="run" (call :build_win) else (call :build_win %1)
 if errorlevel 1 exit /b 1
+if /i "%1"=="run" goto launch
+if "%1"=="" call :ask_launch
+exit /b 0
+
+rem ---- ARC 0.10.15: offer to start the game after a plain build (never in scripts: ARC_NO_LAUNCH, or no answer in 15 s) ----
+:ask_launch
+if defined ARC_NO_LAUNCH exit /b 0
+choice /c YN /n /t 15 /d N /m "Launch {title} now? [Y/N] "
+if errorlevel 2 exit /b 0
+:launch
+start "" /d "%CD%\build" "%CD%\build\{name}.exe"
 exit /b 0
 
 :web_only
@@ -193,7 +206,8 @@ exit /b 0
 '''
 
 BUILD_SH = r'''#!/usr/bin/env sh
-# Build {title} with ARC.   ./build.sh [linux|headless|win|web|release]   (default linux)
+# Build {title} with ARC.   ./build.sh [linux|run|headless|win|web|release]   (default linux)
+#   run      -> the linux build, then start it (ARC 0.10.15)
 #   web      -> build/web/index.html (+ .js .wasm .data)
 #   release  -> win + web, then dist/{zipname}-windows.zip (exe + assets) and dist/{zipname}-web.zip (for itch.io)
 # Web packs (ARC 0.8.6, <ARC>/docs/WEB.md): WEB_PACKS lists folders of assets/ that become packs next to index.html,
@@ -246,6 +260,8 @@ winres() {{   # resources (ARC 0.8.2): res/*.rc, e.g. "1 ICON game.ico" for the 
 }}
 case "$target" in
   linux)    native "${{CC:-cc}}" "${{CXX:-c++}}" "build/$name" "-D_GNU_SOURCE" "-lX11 -lGL -ldl -lpthread -lm"; copy_assets build ;;
+  run)      native "${{CC:-cc}}" "${{CXX:-c++}}" "build/$name" "-D_GNU_SOURCE" "-lX11 -lGL -ldl -lpthread -lm"; copy_assets build
+            echo "built $target"; cd build && exec "./$name" ;;
   headless) native "${{CC:-cc}}" "${{CXX:-c++}}" "build/${{name}}_headless" "-D_GNU_SOURCE -DARC_HEADLESS_ONLY" "-lm"; copy_assets build ;;
   win)      winres; native x86_64-w64-mingw32-gcc x86_64-w64-mingw32-g++ "build/$name.exe" "" "$WRES -static -ld3d11 -ldxguid -lwinmm -luuid"; copy_assets build ;;
   web)      web ;;

@@ -2,6 +2,35 @@
 
 Version numbers follow `ARC_VERSION` in `include/arc.h`. Games can check it at compile time.
 
+## 0.10.15 — 21 Nov 2026: glow masks (lamps per draw), build.bat offers to launch, a Windows build fix
+
+Self-test 2709 (9 new, `tests/test_v1015.c`). Post test: a new look, `L_GLOW`. New checks: `tests/glow_mask_check.md`
+(on `samples/lights`) and `tests/launch_prompt_test.py`. Both from Grand Token Acquisition.
+
+- **Fix: ARC 0.10.14 did not compile on Windows.** The popup code had a variable called `near`, which the Windows
+  headers define as an empty macro. It is renamed. ARC and all six templates now compile with MinGW here.
+- **Glow masks (GTA's car lamps):** `arc_mesh_style.emissive_mask` is a texture in the mesh's UVs. Its red, green
+  and blue channels each mark a group of pixels, and group i glows `glow_rgb[i] x glow[i]` (0 = off; above about 1
+  it blooms), unlit and added after lighting.
+  - One mesh and one mask serve every instance, each with its own lamps on or off: indicators that blink, brake
+    lights, lit windows, screens.
+  - It works in all renderers and on skinned meshes. Draws with the same mesh, mask, colours and strengths batch
+    together (one draw call per lamp state).
+  - While any group glows, the mask takes the place of the mesh's own emissive map and colour on that draw. (The
+    GL shader is at WebGL2's 16 samplers, so the mask shares the emissive map's slot.)
+- **A mesh's own glow mask:** `arc_import.py --glow-mask IMG` (also `mesh2arcm.py`) stores it in the `.arcm` as a
+  trailing `GLOW` block. It is lossless PNG and `--compress` leaves it alone; ARC before 0.10.15 ignores the block.
+  - `arc_mesh_load` sets it; `arc_mesh_glow_mask(m)` reads it; `arc_mesh_set_glow_mask(m, tex)` sets one at run time.
+  - A style's `emissive_mask` replaces it for that draw.
+  - `ARC_HAS_EMISSIVE_MASK`.
+- `samples/lights`: `glow_mask on|off` (G) shows two boxes sharing one mesh and mask with different lamps lit.
+- **New games' `build.bat` offers to launch the game** after a plain build: `Launch <Title> now? [Y/N]`, No after
+  15 s.
+  - `build.bat run` builds and launches without asking, and `./build.sh run` does the same on Linux.
+  - `ARC_NO_LAUNCH=1` never asks, and `headless`, `web` and `release` builds never ask. `tools/arc_mcp.py` sets it
+    for its window builds.
+  - Existing games get it with `new_game.py GAME --update-scripts`.
+
 ## 0.10.14 — 21 Nov 2026: template games with art and juice, a juice kit, asset manifests
 
 Self-test 2700 (11 new, `tests/test_v1014.c`). All six templates are finished mini-games with Ludo-made models,

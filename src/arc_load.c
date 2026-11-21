@@ -17,7 +17,7 @@ typedef struct {
     int state;                       /* 0 queued, 1 decoding, 2 decoded (under the lock when threads run), 3 waiting (0.8.6) */
     int pack; long long counted;     /* 0.8.6 ARC__LOAD_PACK: the pack table's index; bytes already counted as done */
     unsigned polled;                 /* 0.8.6: the frame it was last looked at (once a frame is enough) */
-    int nweb; arc__img *web[4]; bool *web_bad[4];   /* 0.8.6 images the browser decodes (the texture, a mesh's maps) */
+    int nweb; arc__img *web[5]; bool *web_bad[5];   /* 0.8.6 images the browser decodes (the texture, a mesh's maps) */
     uint8_t *file; size_t file_n;    /* the file's bytes (kept while decoded data points into them) */
     bool ok; char err[400];
     arc__img img; arc__mesh_data md;
@@ -90,7 +90,7 @@ static void load_worker(void *arg) {
 /* ---- 0.8.6 asynchronous items (no worker threads): browser image decoding, pack downloads ---- */
 static const arc__imgdec *load_imgdec(void) { return LQ.nthreads ? NULL : arc__imgdec_get(); }
 static void load_web_add(load_item *it, arc__img *img, bool *bad) {
-    if (img->src && !img->rgba && !img->comp && it->nweb < 4) { it->web[it->nweb] = img; it->web_bad[it->nweb] = bad; it->nweb++; }
+    if (img->src && !img->rgba && !img->comp && it->nweb < 5) { it->web[it->nweb] = img; it->web_bad[it->nweb] = bad; it->nweb++; }
 }
 /* ARC's own decoder for one of the item's images (the browser refused, failed, or we can't wait) */
 static void load_web_fallback(load_item *it, int k) {
@@ -121,6 +121,7 @@ static void load_begin(load_item *it) {
         else {
             if (it->md.has_tex && !it->md.tex_bad) load_web_add(it, &it->md.tex, &it->md.tex_bad);
             for (int i = 0; i < 3; i++) if (it->md.has_mat && !it->md.map_bad[i]) load_web_add(it, &it->md.maps[i], &it->md.map_bad[i]);
+            if (it->md.has_glow && !it->md.glow_bad) load_web_add(it, &it->md.glow, &it->md.glow_bad);   /* 0.10.15 */
         }
     }
     bool waiting = false;

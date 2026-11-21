@@ -13,6 +13,7 @@ What each kind of file becomes (the folder is under DIR/assets, DIR = --game, de
                                             through; the final bounds are in the report and --json "bounds"); --anim NAME.glb ... adds an .arca of clips);
                                             --compress: block-compressed textures inside (texcompress.py --arcm);
                                             0.10.14 --texture-size N: textures at most N pixels a side (512 for props)
+                                            0.10.15 --glow-mask IMG: lamps switched per draw (arc_mesh_style.glow)
   .png .jpg .jpeg .qoi .tga .bmp .webp      textures/NAME.png (or .jpg kept as is); larger than --max-size are
                                             shrunk; --compress: textures/NAME.arct (BC1/BC3, mipmapped);
                                             --normal: a normal map (BC5 when compressed)
@@ -133,7 +134,7 @@ def preview(asset, out_png):
 def import_options(a):
     o = []
     for flag, v in (('--into', a.into), ('--height', a.height), ('--footprint', a.footprint), ('--yaw', a.yaw),
-                    ('--origin', a.origin), ('--texture-size', a.texture_size or None)):
+                    ('--origin', a.origin), ('--texture-size', a.texture_size or None), ('--glow-mask', a.glow_mask)):
         if v is not None: o += [flag, ('%g' % v) if isinstance(v, float) else str(v)]
     for flag, v in (('--fit', a.fit), ('--fit-uniform', a.fit_uniform)):
         if v: o += [flag] + ['%g' % x for x in v]
@@ -204,6 +205,7 @@ def main():
     ap.add_argument('--anim', nargs='+', metavar='CLIP')
     ap.add_argument('--compress', action='store_true'); ap.add_argument('--normal', action='store_true')
     ap.add_argument('--max-size', type=int, default=2048)
+    ap.add_argument('--glow-mask', default=None, help='models: an image whose red, green and blue mark glowing parts (lamps switched per draw with arc_mesh_style.glow); stored in the .arcm')
     ap.add_argument('--texture-size', type=int, default=0, help='models: shrink their textures to at most this many pixels a side (512 suits small props)')
     ap.add_argument('--music', action='store_true')
     ap.add_argument('--sizes', default='16,32')
@@ -250,6 +252,7 @@ def main():
             if a.fit_uniform: cmd += ['--fit-uniform'] + [str(v) for v in a.fit_uniform]
             if a.origin: cmd += ['--origin', a.origin]
             if a.texture_size: cmd += ['--texture-size', str(a.texture_size)]   # 0.10.14
+            if a.glow_mask: cmd += ['--glow-mask', a.glow_mask]   # 0.10.15
             if a.anim:
                 arca = dest('meshes', name + '.arca'); cmd += ['--anim', arca] + a.anim; r['outputs'].append(arca)
             ok, out = run(cmd, a.dry_run)
