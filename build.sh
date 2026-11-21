@@ -70,6 +70,8 @@ case "$target" in
             python3 tools/arc_check.py tests/board_check.md --exe build/board_headless > build/board_check.txt || { cat build/board_check.txt; exit 1; }; tail -1 build/board_check.txt
             ${CC:-cc} $CFLAGS -D_GNU_SOURCE -DARC_HEADLESS_ONLY samples/terrain/terrain.c src/arc.c -o build/terrain_headless -lm   # 0.10.13 terrain colour map
             python3 tools/arc_check.py tests/terrain_colour_check.md --exe build/terrain_headless > build/terrain_colour_check.txt || { cat build/terrain_colour_check.txt; exit 1; }; tail -1 build/terrain_colour_check.txt
+            ${CC:-cc} $CFLAGS -D_GNU_SOURCE -DARC_HEADLESS_ONLY samples/lights/lights.c src/arc.c -o build/lights_headless -lm   # 0.10.15 glow masks
+            python3 tools/arc_check.py tests/glow_mask_check.md --exe build/lights_headless > build/glow_mask_check.txt || { cat build/glow_mask_check.txt; exit 1; }; tail -1 build/glow_mask_check.txt
             ${CC:-cc} $CFLAGS -D_GNU_SOURCE -DARC_HEADLESS_ONLY samples/action/action.c src/arc.c -o build/action_headless -lm   # 0.10.0 brains, senses, shots, camera rigs
             python3 tools/arc_check.py tests/action_check.md --exe build/action_headless > build/action_check.txt || { cat build/action_check.txt; exit 1; }; tail -1 build/action_check.txt
             ${CC:-cc} $CFLAGS -D_GNU_SOURCE -DARC_HEADLESS_ONLY tests/review_game.c src/arc.c -o build/review_headless -lm   # 0.10.1 review sheets, UI layout
@@ -85,6 +87,7 @@ case "$target" in
             python3 tools/arc_check.py tests/split_check.md --exe build/split_headless > build/split_check.txt || { cat build/split_check.txt; exit 1; }; tail -1 build/split_check.txt
             ${CC:-cc} $CFLAGS -D_GNU_SOURCE -DARC_HEADLESS_ONLY samples/demo/demo.c src/arc.c -o build/demo_headless -lm   # 0.10.11 lines and touch (Vector Trader)
             python3 tools/arc_request.py tests/offset2d_check.md --game test --dry-run > /dev/null   # 0.10.13 request tool (no network)
+            python3 tests/launch_prompt_test.py || exit 1   # 0.10.15 build.bat asks to launch the game
             for c in line touch nan text save_path command_clash offset2d lines2d music_loop; do python3 tools/arc_check.py tests/${c}_check.md --exe build/demo_headless > build/${c}_check.txt || { cat build/${c}_check.txt; exit 1; }; tail -1 build/${c}_check.txt; done
             python3 tests/line_width_test.py build/demo_headless || exit 1
             python3 tests/touch_replay_test.py build/demo_headless || exit 1

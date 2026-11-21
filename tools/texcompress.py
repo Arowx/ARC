@@ -554,6 +554,7 @@ def recompress_arcm(src, dst, a, log=print):
     at += vc * (16 if ver >= 3 else 36) + (vc * 8 if flags & 1 else 0)
     ib = ic * (2 if flags & 4 else 4); at += (ib + 3) & ~3
     head, tex, rest = d[:at], d[at:at + tex_bytes], d[at + tex_bytes:at + tex_bytes + mat_bytes]
+    tail = d[at + tex_bytes + mat_bytes:]   # 0.10.15: a GLOW block (the glow mask) is kept as it is: a mask must stay exact
     stats = dict(changed=False, before=len(d), images=[])
 
     def conv(b, kind):
@@ -585,7 +586,7 @@ def recompress_arcm(src, dst, a, log=print):
     # version 4 = the compact (v3) layout with .arct images; a version 2 file (36-byte vertices) keeps its number and layout
     # (ARC 0.7.1 reads .arct images in any version; an older ARC would load it without its texture)
     newver = 4 if stats['changed'] and ver >= 3 else ver
-    out = head[:4] + struct.pack('<6I', newver, vc, ic, flags, len(tex2), len(mat2)) + head[28:] + tex2 + mat2
+    out = head[:4] + struct.pack('<6I', newver, vc, ic, flags, len(tex2), len(mat2)) + head[28:] + tex2 + mat2 + tail
     open(dst, 'wb').write(out)
     stats['after'] = len(out)
     return stats

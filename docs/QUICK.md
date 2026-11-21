@@ -43,7 +43,7 @@ arc_app arc_main(int argc, char **argv) {
 - [Textures and images](api/graphics-textures.md) - 27 names
 - [Camera and depth](api/graphics-camera.md) - 9 names
 - [Lighting, shadows, reflections and post-processing](api/graphics-lighting.md) - 41 names
-- [Drawing meshes and mesh styles](api/graphics-drawing.md) - 27 names
+- [Drawing meshes and mesh styles](api/graphics-drawing.md) - 29 names
 - [Skeletal animation](api/graphics-animation.md) - 48 names
 - [Particles, trails, decals and stamps](api/graphics-effects.md) - 34 names
 - [Immediate geometry, quick shapes and 3D lines](api/graphics-shapes.md) - 16 names
@@ -406,6 +406,8 @@ arc_app arc_main(int argc, char **argv) {
 - `arc_paint_pattern` _(type)_
 - `arc_paint_parts_rule` - 0.10.6: joints whose name matches `pattern` (case ignored; '*' any run, '?' one character…
 - `arc_mesh_style` _(type)_
+- `arc_mesh_set_glow_mask` - 0.10.15 a mesh's own glow mask, used when a draw's arc_mesh_style.emissive_mask is {0} (a…
+- `arc_mesh_glow_mask`
 - `arc_mesh_set_texture_array` - 0.9.9: a mesh takes its colour from a texture array (arc_texture_array) instead of its te…
 - `arc_draw_mesh_layer`
 - `arc_tile_cell` _(type)_

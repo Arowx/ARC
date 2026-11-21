@@ -50,6 +50,8 @@ Materials (ARC 0.6; glTF maps are kept by default):
   --normal-from-height IMG [--normal-strength S]   make one from an image's brightness (light = raised; S 2)
   --orm-map IMG      packed red occlusion, green roughness, blue metallic
   --emissive-map IMG [--emissive-strength F]       glowing parts (F: brightness, above 1 blooms)
+  --glow-mask IMG                                  0.10.15: lamps switched per draw: red, green and blue mark three groups
+                                                   (arc_mesh_style.glow[3]); stored in the .arcm, read by arc_mesh_glow_mask
   --normal-png       store the normal map losslessly (default JPEG quality 92)
   --map-size N       shrink the material maps to N pixels on their longest side (e.g. 256 with a 512 texture)
 GPU-compressed textures (ARC 0.7.1; needs tools/texcompress.py next to this file):
@@ -501,7 +503,23 @@ def oct_encode(N):
     return np.clip(np.round(np.stack([x, y], 1) * 127), -127, 127).astype(np.int8)
 
 
-def write_arcm(path, P, N, C, UV, I, skin=None, png=None, double=False, compact=None, material=None):
+def glow_mask_png(a):
+    """0.10.15 --glow-mask IMG: the mask as lossless PNG (red, green and blue groups; see arc_mesh_style.emissive_mask)"""
+    if not getattr(a, 'glow_mask', None): return None
+    try:
+        from PIL import Image
+    except ImportError:
+        sys.exit('--glow-mask needs Pillow (pip install pillow)')
+    import io
+    im = Image.open(a.glow_mask).convert('RGB')
+    if getattr(a, 'texture_size', 0) and max(im.size) > a.texture_size:   # the same limit as the colour texture, kept crisp
+        k = a.texture_size / max(im.size); im = im.resize((max(1, round(im.width * k)), max(1, round(im.height * k))), Image.NEAREST)
+    b = io.BytesIO(); im.save(b, 'PNG', optimize=True)
+    print('  glow mask %s: %dx%d, %d bytes' % (os.path.basename(a.glow_mask), im.width, im.height, len(b.getvalue())))
+    return b.getvalue()
+
+
+def write_arcm(path, P, N, C, UV, I, skin=None, png=None, double=False, compact=None, material=None, glow=None):
     np = need_np(); n = len(P)
     if n: print_bounds(np.asarray(P, np.float64))
     compact = COMPACT if compact is None else compact
@@ -533,6 +551,7 @@ def write_arcm(path, P, N, C, UV, I, skin=None, png=None, double=False, compact=
         ib = I.astype('<u2' if flags & 4 else '<u4').tobytes(); o.write(ib + b'\0' * ((4 - len(ib) % 4) % 4))
         if png: o.write(png)
         if mblock: o.write(mblock)
+        if glow: o.write(b'GLOW' + struct.pack('<I', len(glow)) + glow)   # 0.10.15: the glow mask, after everything (older ARC ignores it)
 
 
 def skin_weights(J, Wt):
@@ -640,7 +659,7 @@ def convert_gltf(src, dst, a):
     if atlas is not None and not a.bake_colors and not a.color: png, kind = encode_texture(atlas, a)
     if a.axm: return write_axm(dst, P[I], N[I], C[I])
     mat = build_material(g, parts, atlas, a) if not a.bake_colors and not a.color else None
-    write_arcm(dst, P, N, C, UV, I, skin, png, double, material=mat)
+    write_arcm(dst, P, N, C, UV, I, skin, png, double, material=mat, glow=glow_mask_png(a))
     lo, hi = P.min(0), P.max(0)
     if png or mat: texture_report(png, mat, float((hi - lo).max()), a)
     mdesc = ''
@@ -845,6 +864,10 @@ def convert_simple(src, dst, a):
         ib = struct.pack('<%d%s' % (len(out_i), 'H' if flags & 4 else 'I'), *out_i)
         o.write(ib + b'\0' * ((4 - len(ib) % 4) % 4))
         o.write(mblock)
+        glow = glow_mask_png(a)   # 0.10.15
+        if glow:
+            print('  warning: this format carries no texture coordinates here, so the glow mask lights the whole model as one group (use glTF)')
+            o.write(b'GLOW' + struct.pack('<I', len(glow)) + glow)
     print('wrote %s: %d vertices, %d triangles%s' % (dst, n, len(out_i) // 3, '  material (factors)' if mblock else ''))
 
 
@@ -880,6 +903,7 @@ def main():
     ap.add_argument('--normal-png', action='store_true', help='store the normal map as PNG (lossless) instead of JPEG')
     ap.add_argument('--map-size', type=int, default=0, help='largest side of the material maps (0 = as the colour texture)')
     ap.add_argument('--orm-map', default=None, help='a packed map: red occlusion, green roughness, blue metallic')
+    ap.add_argument('--glow-mask', default=None, help='0.10.15: an image whose red, green and blue mark glowing parts (arc_mesh_style.emissive_mask); stored in the .arcm')
     ap.add_argument('--emissive-map', default=None); ap.add_argument('--emissive-strength', type=float, default=1.0)
     ap.add_argument('--compress', action='store_true', help='block-compressed textures with mips (.arcm version 4, ARC 0.7.1)')
     ap.add_argument('--color-format', default='auto', choices=['auto', 'bc1', 'bc3', 'bc7'])

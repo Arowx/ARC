@@ -176,7 +176,8 @@ static const char *MESH_FS =
     "uniform vec4 u_m6;\n"
     "uniform highp sampler2DArray u_layers; uniform vec4 u_spl, u_spl2;\n"
     "uniform highp sampler2D u_wmask; uniform vec4 u_wm0, u_wm1, u_cut0, u_cut1, u_cut2;\n"   /* 0.9.9 world mask (unit 16), cutaway (see arc__pass); cut2.w: this mesh is cut */   /* 0.9.6 splat: layer scales; sharpness, layers, on (see ARC__MAT3_*) */
-    "uniform sampler2D u_ptex; uniform vec4 u_paint, u_paint3;\n"   /* 0.8.8 paint mask (unit 10) and the second colour (w: on) */   /* 0.8.8 x: the colour texture's world scale (0 = mesh uv) */   /* 0.8.7 planar reflections (see arc__pass.mirror) */   /* 0.8.4 detail map, arc__mesh_rec.mat2 */
+    "uniform sampler2D u_ptex; uniform vec4 u_paint, u_paint3;\n"
+    "uniform vec4 u_glow[3];\n"   /* 0.10.15 glow mask groups: colour x strength; u_glow[0].w: on (the mask on unit 5, in place of the emissive map) */   /* 0.8.8 paint mask (unit 10) and the second colour (w: on) */   /* 0.8.8 x: the colour texture's world scale (0 = mesh uv) */   /* 0.8.7 planar reflections (see arc__pass.mirror) */   /* 0.8.4 detail map, arc__mesh_rec.mat2 */
     "uint hx_h(int x, int y) { uint h = (uint(x) * 73856093u) ^ (uint(y) * 19349663u); h ^= h >> 13u; h *= 0x5bd1e995u; h ^= h >> 15u; return h; }\n"
     "float hx_gain(float x, float k) { x = clamp(x, 0.0, 1.0); float s = 0.5 * pow(max(2.0 * (x < 0.5 ? x : 1.0 - x), 0.0), k); return x < 0.5 ? s : 1.0 - s; }\n"   /* 0.10.12: a weight of 1.0000001 made pow's base negative: NaN */
     "vec4 hex_tex(sampler2D t, vec2 st, float rot, float con, bool flip) {\n"   /* 0.8.4 hex tiling: see arc_internal.h */
@@ -386,7 +387,8 @@ static const char *MESH_FS =
     "    lit = base * (u_ambient.rgb * ao + u_light_col.rgb * diff * vis + v_tint.w) + u_rim.rgb * rim;\n"
     "    if (u_nlt > 0) lit += local_lights(v_wp, n, base, false, n, 1.0, 1.0, base);\n"
     "  }\n"
-    "  if (u_m2.w > 0.5) lit += u_m2.rgb * (u_m1.w > 0.5 ? texture(u_etex, v_uv).rgb : vec3(1.0));\n"
+    "  if (u_glow[0].w > 0.5) { vec3 gm = texture(u_etex, v_uv).rgb; lit += u_glow[0].rgb * gm.r + u_glow[1].rgb * gm.g + u_glow[2].rgb * gm.b; }\n"   /* 0.10.15 */
+    "  else if (u_m2.w > 0.5) lit += u_m2.rgb * (u_m1.w > 0.5 ? texture(u_etex, v_uv).rgb : vec3(1.0));\n"
     "  if (glow > 0.0) { int e = int(v_fx1.z); lit += vec3(float(e & 255), float((e >> 8) & 255), float((e >> 16) & 255)) / 255.0 * glow; }\n"
     "  if (u_rpar.x > 0.0 && u_ramt > 0.0) {\n"   /* the mirror pass's picture at this pixel (rows bottom-up, as gl_FragCoord) */
     "    float F = 0.6 + 0.4 * pow5(1.0 - max(dot(n, normalize(u_eye.xyz - v_wp)), 0.0));\n"
@@ -581,7 +583,7 @@ static struct {
     GLuint mesh_prog, line_prog, quad_prog;
     GLint u_sdepth, u_ivp, u_soft; GLuint soft_tex, soft_fbo; int soft_w, soft_h; GLenum soft_fmt; int soft_win;   /* 0.7 soft particles; soft_win: */
                                                                                                                   /* the window's format (index + 1, -1 = none) */
-    GLint u_layers, u_spl, u_spl2, u_wmask, u_wm0, u_wm1, u_cut0, u_cut1, u_cut2; GLuint dummy_arr; bool cut_on; float cut2[4]; GLint u_ntex, u_otex, u_etex, u_m0, u_m1, u_m2, u_m3, u_m4, u_m5, u_dtex, u_mtex, u_rtex, u_clip, u_rpar, u_ramt, u_m6, u_ptex, u_paint, u_paint3, u_pat_fs, u_pat_vs, u_pjm, u_env_top, u_env_hor, u_env_bot, u_ltex, u_ltile, u_lidx, u_nlt, u_time;
+    GLint u_layers, u_spl, u_spl2, u_wmask, u_wm0, u_wm1, u_cut0, u_cut1, u_cut2; GLuint dummy_arr; bool cut_on; float cut2[4]; GLint u_ntex, u_otex, u_etex, u_m0, u_m1, u_m2, u_m3, u_m4, u_m5, u_dtex, u_mtex, u_rtex, u_clip, u_rpar, u_ramt, u_m6, u_ptex, u_paint, u_paint3, u_glow, u_pat_fs, u_pat_vs, u_pjm, u_env_top, u_env_hor, u_env_bot, u_ltex, u_ltile, u_lidx, u_nlt, u_time;
     GLuint lt_tex, ltile_tex, lidx_tex; const arc__frame_data *cur_frame;
     GLuint lsh_tex, lsh_fbo; int lsh_res; bool lsh_ok; GLint u_lshadow, u_lsh;   /* 0.9.5 light shadow atlas (6 x 4 faces of lsh_res); lsh_ok: drawn for the pass now */   /* 0.9.5 tiled lights: data (4 x 256 RGBA32F), a pass's tiles (16 x 9 R32UI), its lists (256 x 36 R8UI) */
     GLint u_vp, u_flip, u_eye, u_ld, u_lc, u_amb, u_fc, u_fog, u_rim, u_opaque, u_mflip, u_tex, u_bones, ul_vp, ul_flip, uq_screen, uq_tex, uq_flip, uq_tflip, uq_sdf;
@@ -779,7 +781,7 @@ static bool gl_init(void) {
         glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST); glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA8, 1, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, white);
     }
-    GL.u_ptex = glGetUniformLocation(GL.mesh_prog, "u_ptex"); GL.u_paint = glGetUniformLocation(GL.mesh_prog, "u_paint"); GL.u_paint3 = glGetUniformLocation(GL.mesh_prog, "u_paint3");
+    GL.u_ptex = glGetUniformLocation(GL.mesh_prog, "u_ptex"); GL.u_paint = glGetUniformLocation(GL.mesh_prog, "u_paint"); GL.u_paint3 = glGetUniformLocation(GL.mesh_prog, "u_paint3"); GL.u_glow = glGetUniformLocation(GL.mesh_prog, "u_glow");
     GL.u_pat_fs = glGetUniformLocation(GL.mesh_prog, "u_pat"); GL.u_pat_vs = GL.u_pat_fs; GL.u_pjm = glGetUniformLocation(GL.mesh_prog, "u_pjm");   /* 0.10.1 (one uniform shared by both stages) */ GL.u_ramt = glGetUniformLocation(GL.mesh_prog, "u_ramt"); GL.u_mtex = glGetUniformLocation(GL.mesh_prog, "u_mtex");
     GL.u_m0 = glGetUniformLocation(GL.mesh_prog, "u_m0"); GL.u_m1 = glGetUniformLocation(GL.mesh_prog, "u_m1"); GL.u_m2 = glGetUniformLocation(GL.mesh_prog, "u_m2");
     GL.u_time = glGetUniformLocation(GL.mesh_prog, "u_time");
@@ -1075,6 +1077,7 @@ static void gl_mesh_uniforms(const arc__pass *P, float flip, bool opaque) {
         glUniform4fv(GL.u_clip, 1, P->clip); glUniform4fv(GL.u_rpar, 1, rp); glUniform1i(GL.u_rtex, 9);
         static const float nopaint[4] = { 0, 0, 0, 0 }; glUniform4fv(GL.u_paint, 1, nopaint); glUniform1i(GL.u_ptex, 10);
         static const float nopat0[16] = { 0 }; glUniform4fv(GL.u_pat_fs, 4, nopat0);   /* 0.10.1 */
+        static const float noglow0[12] = { 0 }; glUniform4fv(GL.u_glow, 3, noglow0);   /* 0.10.15 */
         glActiveTexture(GL_TEXTURE9); glBindTexture(GL_TEXTURE_2D, GL.tex[rt ? rt : 1]);
     }
     static const float soft_off[4] = { 1, 1, 0, 0 };
@@ -1356,6 +1359,11 @@ static void gl_draw_batches(const arc__frame_data *f, int first, int count, GLen
             glUniform4fv(GL.u_pat_fs, 4, pa ? &pa->p[0][0] : nopat);
             if (pa) glUniform4fv(GL.u_pjm, 32, pa->jm);
             if (pt) { glActiveTexture(GL_TEXTURE10); glBindTexture(GL_TEXTURE_2D, GL.tex[pt]); glActiveTexture(GL_TEXTURE0); }
+            /* 0.10.15 the batch's glow scheme: the mask goes on the emissive map's unit (5), which gl_material binds again for the next batch */
+            const arc__glow *gw = mb->glow > 0 && mb->glow <= f->glow_count && GL.tex[f->glows[mb->glow - 1].tex] ? &f->glows[mb->glow - 1] : NULL;
+            float gu[12] = { 0 };
+            if (gw) { memcpy(gu, gw->c, sizeof gu); gu[3] = 1; glActiveTexture(GL_TEXTURE5); glBindTexture(GL_TEXTURE_2D, GL.tex[gw->tex]); glActiveTexture(GL_TEXTURE0); }
+            glUniform4fv(GL.u_glow, 3, gu);
         }
         bool wrap = M->mat2[ARC__MAT2_BMODE] > 0.5f && tex != 1 && !(arc__textures[tex].flags & ARC_TEX_REPEAT);   /* 0.8.8: hex / world colour repeats */
         if (wrap) { glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT); }
@@ -1381,6 +1389,7 @@ static void gl_draw_batches(const arc__frame_data *f, int first, int count, GLen
     glDisable(GL_BLEND); glDepthFunc(GL.zless); glDepthMask(GL_TRUE);
     static const float nopaint[4] = { 0, 0, 0, 0 }; glUniform4fv(GL.u_paint, 1, nopaint);
     static const float nopat1[16] = { 0 }; glUniform4fv(GL.u_pat_fs, 4, nopat1);   /* 0.10.1 */
+    static const float noglow[12] = { 0 }; glUniform4fv(GL.u_glow, 3, noglow);   /* 0.10.15 */
 }
 /* the multisampled screen: drawn into, then resolved into the window at the end of the frame */
 static GLuint gl_screen_fbo(int w, int h) {

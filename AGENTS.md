@@ -195,6 +195,17 @@ as for games with `draw()`.
   `assets/manifest.json` with its options and clips; `arc_import.py --manifest --game . --sources art` re-imports
   every model the same way. Check the green FRONT +Z arrow in the preview before using a model.
 
+## Glow masks and launching (0.10.15)
+
+- **Lamps that switch per draw:** paint a mask in the model's UVs (red, green and blue = three groups: left
+  indicators, right indicators, brake lights) and import it with the model: `arc_import.py car.glb --glow-mask
+  car_lamps.png`. Then each draw picks what glows: `st.glow_rgb[0] = 0xFFA020; st.glow[0] = blinking ? 2.0f : 0;`
+  (0 = off, above about 1 blooms with `arc_post` bloom). One mesh and one mask serve every instance, and identical
+  lamp states batch together. `st.emissive_mask` gives a mask for one draw instead of the mesh's own. Check it with
+  a `shot` (`samples/lights`, `glow_mask on`, shows it).
+- **Building:** a game's plain `build.bat` asks to launch it (No after 15 s); `build.bat run` launches without
+  asking, and `./build.sh run` does the same on Linux. Set `ARC_NO_LAUNCH=1` in scripts that call a plain `build.bat`.
+
 ## Asking ARC for a change (0.10.13)
 
 When the game needs something ARC doesn't do, write the request in the `docs/REQUESTS.md` template, with an

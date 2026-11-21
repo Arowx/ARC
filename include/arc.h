@@ -55,8 +55,8 @@ extern "C" {
 #define ARC_GAME_API
 #endif
 
-#define ARC_VERSION "0.10.14"
-#define ARC_VERSION_NUM 1014  /* major*10000 + minor*100 + patch; games can #if ARC_VERSION_NUM < ... #error */
+#define ARC_VERSION "0.10.15"
+#define ARC_VERSION_NUM 1015  /* major*10000 + minor*100 + patch; games can #if ARC_VERSION_NUM < ... #error */
 /* 0.9.8 feature macros: one per feature group, so a game (or its CMake) can #if on what this arc.h has instead of
    searching it for function names. The value is the ARC_VERSION_NUM it arrived in. New groups are added here with
    each release; a macro is never removed while its feature stays. */
@@ -114,6 +114,7 @@ extern "C" {
 #define ARC_HAS_MUSIC_LOOP     1013  /* arc_music_set_loop / arc_music_set_loop_fade; --audio-sim runs the mixer headless */
 #define ARC_HAS_TERRAIN_COLOR_MAP 1013  /* arc_terrain_desc.color_map, arc_terrain_set_color_map, arc_terrain_set_splat */
 #define ARC_HAS_JUICE          1014  /* arc_play_var, arc_popup_text / _2d, arc_yaw_to */
+#define ARC_HAS_EMISSIVE_MASK  1015  /* arc_mesh_style.emissive_mask, glow_rgb, glow; arc_mesh_set_glow_mask */
 
 /* ======================================================================== */
 /* Math (header-only, inlined)                                              */
@@ -1266,7 +1267,22 @@ typedef struct {
     /* 0.10.1 */
     arc_paint_pattern pattern;   /* a procedural second colour (see arc_paint_pattern) */
     bool  armour_mask;        /* the pattern only where paint_mask's red is */
+    /* 0.10.15 glowing parts through a mask in the mesh's UVs (all renderers; skinned meshes too): red, green and blue
+       each mark a group of pixels (indicators left and right and brake lights, lit windows, screens), and group i
+       glows glow_rgb[i] x glow[i], unlit and added after lighting (above about 1 it blooms with arc_post bloom).
+       glow 0 = that group is off, so one mesh and one mask serve every instance, each with its own lamps on or off.
+       No mask given: the mesh's own (arc_mesh_set_glow_mask) is used. While any group glows, the mask stands in for
+       the mesh's emissive map and colour on that draw. Draws with the same mesh, mask, colours and strengths batch
+       together (one draw call per lamp state). */
+    arc_texture emissive_mask;   /* {0} = the mesh's own mask, or none */
+    uint32_t glow_rgb[3];        /* each group's colour (0 = white) */
+    float    glow[3];            /* each group's strength (0 = off) */
 } arc_mesh_style;
+/* 0.10.15 a mesh's own glow mask, used when a draw's arc_mesh_style.emissive_mask is {0} (a style's mask replaces it).
+   arc_import.py --glow-mask IMG stores one in the .arcm, and arc_mesh_load sets it. {0} removes it. The mesh does not
+   own the texture (free it yourself), except one loaded from the file. arc_mesh_glow_mask reads it back. */
+ARC_API void arc_mesh_set_glow_mask(arc_mesh m, arc_texture mask);
+ARC_API arc_texture arc_mesh_glow_mask(arc_mesh m);
 /* 0.9.9: a mesh takes its colour from a texture array (arc_texture_array) instead of its texture, at the layer each draw
    picks (arc_mesh_style.tex_layer, arc_draw_mesh_layer); {0} back to its own texture. Draws of the mesh with different
    layers stay one batch (one draw call per mesh). */

@@ -170,6 +170,7 @@ typedef struct {                       /* what stays the same over one instance 
     int px, py;                        /* the pixel being shaded (reflections) */
     bool cut, back, flipw;             /* 0.9.9 cutaway on this mesh; the triangle being drawn faces away; winding flipped */
     const arc__tex_rec *pt; float pt2[4], pt3[4]; bool pt3on;   /* 0.8.8 the batch's paint mask and second colour (NULL = none) */
+    const arc__tex_rec *gt; float gc[3][4];   /* 0.10.15 the batch's glow mask (NULL = none) and its groups' colour x strength */
     const arc__pattern *pat; int paxis;   /* 0.10.1 the batch's paint pattern (NULL = none); this triangle's face axis (bind pose) */
     const arc__tex_rec *sl[ARC__MAX_LAYERS]; const float *m3; int nsl;   /* 0.9.6 splat layers (CPU copies), ARC__MAT3_*, count (0 = off) */
 } shade_ctx;
@@ -557,6 +558,8 @@ static void shade(const shade_ctx *C, const float *at, int lod, float uv_ratio, 
     float orm[4] = { 1, 1, 1, 1 }, em[4] = { 1, 1, 1, 1 };
     if (mat && C->mt[1]) sample_lod(C->mt[1], lod_for(C->mt[1], uv_ratio), at[A_U], at[A_V], orm);
     if (mat && C->mt[2]) sample_lod(C->mt[2], lod_for(C->mt[2], uv_ratio), at[A_U], at[A_V], em);
+    float gm[4] = { 0, 0, 0, 0 };
+    if (C->gt) sample_lod(C->gt, lod_for(C->gt, uv_ratio), at[A_U], at[A_V], gm);   /* 0.10.15 */
     float ao = mat ? 1.0f - mat[ARC__MAT_OCC] * (1.0f - orm[0]) : 1.0f;
     bool pbr = mat && mat[ARC__MAT_PBR] > 0.5f && !arc__ext_unlit(in->extra);
     float spec[3] = { 0, 0, 0 }, envs[3] = { 0, 0, 0 }, metal = 0;
@@ -606,7 +609,8 @@ static void shade(const shade_ctx *C, const float *at, int lod, float uv_ratio, 
         if (arc__ext_unlit(in->extra)) lit = base * (1.0f + in->tint[3]);
         else if (pbr) lit = base * (1.0f - metal) * (P->ambient[ch] * ao + P->light_col[ch] * diff * vis) + spec[ch] + envs[ch] + base * in->tint[3] + P->rim[ch] * rim;
         else lit = base * (P->ambient[ch] * ao + P->light_col[ch] * diff * vis + in->tint[3]) + pl[ch] + P->rim[ch] * rim;
-        if (mat) lit += mat[ARC__MAT_ER + ch] * em[ch];
+        if (C->gt) lit += C->gc[0][ch] * gm[0] + C->gc[1][ch] * gm[1] + C->gc[2][ch] * gm[2];   /* 0.10.15: in place of the emissive map */
+        else if (mat) lit += mat[ARC__MAT_ER + ch] * em[ch];
         if (glow > 0) { int e = (int)fx[6]; lit += (float)((e >> (8 * ch)) & 0xFF) / 255.0f * glow; }
         if (rw > 0) lit += (rc[ch] - lit) * rw;
         lit += (1.0f - lit) * in->params[1];
@@ -640,7 +644,7 @@ static void raster3d(const v3 *a, const v3 *b, const v3 *c, const shade_ctx *C) 
         float wr = fabsf((xb - xa) * (zc - za) - (zb - za) * (xc - xa)) / fabsf(area);
         for (int i = 0; i < C->nsl; i++) g_llod[i] = lod_for(C->sl[i], wr * C->m3[ARC__MAT3_S0 + i] * C->m3[ARC__MAT3_S0 + i]);
     }
-    if ((C->tex && C->tex->levels > 1) || C->mat || C->dt || C->bplane >= 0 || C->pt) {
+    if ((C->tex && C->tex->levels > 1) || C->mat || C->dt || C->bplane >= 0 || C->pt || C->gt) {
         float ua = a->at[A_U] / a->w, va = a->at[A_V] / a->w, ub = b->at[A_U] / b->w, vb = b->at[A_V] / b->w, uc = c->at[A_U] / c->w, vc = c->at[A_V] / c->w;
         uv_ratio = fabsf((ub - ua) * (vc - va) - (vb - va) * (uc - ua)) / fabsf(area);
     }
@@ -838,6 +842,11 @@ static void draw_batch(const arc__frame_data *f, const arc__pass *P, const arc__
     C.pt = (mb && mb->paint_tex && mb->paint_tex < ARC__MAX_TEXTURES && arc__textures[mb->paint_tex].used) ? &arc__textures[mb->paint_tex] : NULL;
     arc__unpack_rgb(mb ? mb->tint2 : 0, C.pt2);
     arc__unpack_rgb(mb ? mb->tint3 & 0xFFFFFF : 0, C.pt3); C.pt3on = mb && (mb->tint3 >> 24);
+    {   /* 0.10.15 the batch's glow scheme */
+        const arc__glow *gw = (mb && mb->glow > 0 && mb->glow <= f->glow_count) ? &f->glows[mb->glow - 1] : NULL;
+        C.gt = (gw && gw->tex < ARC__MAX_TEXTURES && arc__textures[gw->tex].used) ? &arc__textures[gw->tex] : NULL;
+        if (C.gt) memcpy(C.gc, gw->c, sizeof C.gc);
+    }
     C.pat = (mb && mb->pat > 0 && mb->pat <= f->pat_count) ? &f->pats[mb->pat - 1] : NULL; C.paxis = 2;   /* 0.10.1 */
     S.na = C.pat ? A_COUNT : A_BASE;
     if (vcount > tmp_cap) { tmp_cap = vcount; tmp = (v3 *)realloc(tmp, sizeof(v3) * (size_t)tmp_cap); }

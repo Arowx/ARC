@@ -40,6 +40,7 @@ enum { L_PLAIN, L_SSAO, L_FXAA, L_LUT_ID, L_LUT_INV, L_CRT, L_PIX, L_SCAN, L_ABE
        L_VPREF, L_VPFULL, L_VPSPLIT,                 /* 0.10.2 a full scene (sky, cascades, a shadowed point light, reflection, post, a minimap
                                                         target, text); the same in one window-sized viewport; two viewports side by side */
        L_PATARM,                                     /* 0.10.6 stripes on the arms only: the mech, and pads on LeftShoulder, clavicle_r and a game-ruled *Pauldron* joint */
+       L_GLOW,                                       /* 0.10.15 glow masks: one mesh and mask, red group on / blue group on / all off; a mesh's own mask */
        L_COUNT };
 static const arc_camera SCAM = { { 0, 3.0f, 6 }, { 0, 0, -12 }, { 0, 1, 0 }, 0.9f, 0, 0.1f, 100 };   /* the shadow looks */
 static uint8_t *img[L_COUNT]; static arc_texture lut_id, lut_inv, nine; static arc_mesh cube, ball, twobox;
@@ -1735,7 +1736,48 @@ static void v106_init(void) {
 }
 static void v102_draw(int look);
 static void v102_check(void);
+/* ---- 0.10.15 glow masks (GTA's car lamps): four grey quads, left to right: the shared mask (left half red group, right
+   half blue group) with only red on, with only blue on, with both off; a second quad with its own mask (arc_mesh_set_glow_mask)
+   and red on. Lit halves glow their colour; the rest stays the plain lit grey, the same as the quad with nothing on. */
+static arc_texture v115_mask; static arc_mesh v115_q1, v115_q2;
+static void v115_draw(void) {
+    if (!v115_q1.id) {
+        uint8_t px[8 * 8 * 4], grey[4 * 4 * 4];
+        for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++) { uint8_t *p = px + (y * 8 + x) * 4; p[0] = x < 4 ? 255 : 0; p[1] = 0; p[2] = x < 4 ? 0 : 255; p[3] = 255; }
+        for (int i = 0; i < 16 * 4; i++) grey[i] = (i % 4 == 3) ? 255 : 0x99;
+        v115_mask = arc_texture_create_ex(8, 8, px, 0); arc_texture gt = arc_texture_create_ex(4, 4, grey, 0);
+        v115_q1 = ct_quad(); arc_mesh_set_texture(v115_q1, gt);
+        v115_q2 = ct_quad(); arc_mesh_set_texture(v115_q2, gt); arc_mesh_set_glow_mask(v115_q2, v115_mask);
+    }
+    arc_camera front = { { 0, 0, 10 }, { 0, 0, 0 }, { 0, 1, 0 }, 0, 4.0f, 0.1f, 50 }; arc_set_camera(&front);
+    arc_reflection_plane(0, 0, 0); arc_set_post(NULL); arc_set_sky_ex(0x000000, 0x000000, 0x000000); arc_set_shadows(arc_v3_make(0, 0, 0), 0, 0);
+    arc_set_light(arc_v3_make(0, 0, 1), 0xA0A0A0, 0x303030); arc_set_fog(0, 0, 0); arc_set_rim(0, 3);
+    arc_mesh_style st; memset(&st, 0, sizeof st);
+    st.emissive_mask = v115_mask; st.glow_rgb[0] = 0xFF0000; st.glow_rgb[2] = 0x0000FF;
+    arc_m4 sc = arc_m4_scale(arc_v3_make(1.3f, 1.3f, 1));   /* (the orthographic size is the view's height: x -3..3, 32 px a unit) */
+    st.glow[0] = 1.5f; arc_draw_mesh_styled(v115_q1, arc_m4_mul(arc_m4_translate(arc_v3_make(-2.25f, 0, 0)), sc), &st);
+    st.glow[0] = 0; st.glow[2] = 1.5f; arc_draw_mesh_styled(v115_q1, arc_m4_mul(arc_m4_translate(arc_v3_make(-0.75f, 0, 0)), sc), &st);
+    st.glow[2] = 0; arc_draw_mesh_styled(v115_q1, arc_m4_mul(arc_m4_translate(arc_v3_make(0.75f, 0, 0)), sc), &st);
+    arc_mesh_style own; memset(&own, 0, sizeof own); own.glow_rgb[0] = 0xFF0000; own.glow[0] = 1.5f;   /* no mask in the style: the mesh's own */
+    arc_draw_mesh_styled(v115_q2, arc_m4_mul(arc_m4_translate(arc_v3_make(2.25f, 0, 0)), sc), &own);
+    char path[64]; look_path(path, sizeof path, L_GLOW); arc_screenshot_after_frame(path);
+}
+static void v115_check(void) {
+    int cx[4] = { 24, 72, 120, 168 }; const uint8_t *l[4], *r[4];
+    for (int i = 0; i < 4; i++) { l[i] = px(L_GLOW, cx[i] - 10, 64); r[i] = px(L_GLOW, cx[i] + 10, 64); }
+    printf("ARC note glow: red on %d,%d,%d | %d,%d,%d  blue on %d,%d,%d | %d,%d,%d  off %d,%d,%d | %d,%d,%d  own %d,%d,%d\n",
+           l[0][0], l[0][1], l[0][2], r[0][0], r[0][1], r[0][2], l[1][0], l[1][1], l[1][2], r[1][0], r[1][1], r[1][2],
+           l[2][0], l[2][1], l[2][2], r[2][0], r[2][1], r[2][2], l[3][0], l[3][1], l[3][2]);
+    const uint8_t *g = l[2];   /* the plain lit grey */
+    CHECK(abs(g[0] - g[1]) < 8 && abs(g[1] - g[2]) < 8 && g[0] > 60 && g[0] < 200);
+    CHECK(l[0][0] > 230 && l[0][0] > l[0][1] + 80 && abs(l[0][1] - g[1]) < 12);      /* red group lit, red only */
+    CHECK(abs(r[0][0] - g[0]) < 12 && abs(r[0][2] - g[2]) < 12);                       /* its blue group off */
+    CHECK(r[1][2] > 230 && r[1][2] > r[1][0] + 80 && abs(l[1][0] - g[0]) < 12);        /* blue lit, red off */
+    CHECK(abs(r[2][0] - g[0]) < 12 && abs(r[2][2] - g[2]) < 12);                       /* both off: plain */
+    CHECK(l[3][0] > 230 && l[3][0] > l[3][1] + 80);                                    /* the mesh's own mask */
+}
 static void v101_draw(int look) {
+    if (look == L_GLOW) { v115_draw(); return; }
     if (look >= L_VPREF && look <= L_VPSPLIT) { v102_draw(look); return; }
     if (!v101_cube.id) v101_init();
     arc_reflection_plane(0, 0, 0); arc_set_post(NULL); arc_set_sky_ex(0x000000, 0x000000, 0x000000); arc_set_shadows(arc_v3_make(0, 0, 0), 0, 0);
@@ -2014,7 +2056,7 @@ static void v099_check(void) {
     CHECK(red > W * H / 200 && green > W * H / 200 && red0 < 20);
     CHECK(holes * 200 < red + green);           /* under half a percent */
     CHECK(boxpx > 500 && through > 100);
-    v099_fx_check(); v099_cut_check(); v100_shots_check(); v101_check(); v102_check();
+    v099_fx_check(); v099_cut_check(); v100_shots_check(); v101_check(); v102_check(); v115_check();
 }
 
 /* ---- 0.10.2 split-screen viewports (Droids). L_VPFULL draws L_VPREF's scene inside arc_viewport_begin(0, 0, W, H):
