@@ -510,6 +510,7 @@ typedef struct arc__threads {
 } arc__threads;
 
 extern const arc__backend *arc__gfx;     /* active render backend */
+extern int arc__max_v2;                  /* 0.10.13 2D vertices a frame (arc_app.max_2d_vertices) */
 extern int arc__msaa;                    /* screen samples asked for (arc_app.msaa or --msaa N), read by GPU backends */
 extern int arc__depth_mode;              /* 0.7.2: ARC_DEPTH_* (arc_app.depth_mode or --depth-mode), set before the backend starts */
 extern bool arc__depth_precise;          /* set by the backend: reversed with float depth and a 0..1 clip range */

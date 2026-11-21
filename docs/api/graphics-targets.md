@@ -78,7 +78,7 @@ ARC_API void arc_screenshot_after_frame(const char *path);
 ```c
 ARC_API void arc_sheet_add(arc_mesh mesh, arc_m4 model, const arc_mesh_style *style, const char *label);
 ARC_API int arc_sheet_count(void);    // items registered while collecting
-typedef struct { int draw_calls, instances, triangles, lines, quads, passes; float cpu_ms, frame_ms; float tick_ms; double avg_frame_ms; const char *backend; int dropped; int culled; int lod_instances[4]; int cells_visible; int static_draws; int textures, textures_compressed; long long texture_bytes; } arc_gfx_stats;
+typedef struct { int draw_calls, instances, triangles, lines, quads, passes; float cpu_ms, frame_ms; float tick_ms; double avg_frame_ms; const char *backend; int dropped; int culled; int lod_instances[4]; int cells_visible; int static_draws; int textures, textures_compressed; long long texture_bytes; int vertices_2d, vertices_2d_max; } arc_gfx_stats;
 ARC_API arc_gfx_stats arc_stats(void);
 ```
 

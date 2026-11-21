@@ -86,6 +86,8 @@ python tools\arc_check.py tests\check_request.md --exe build\check_game_headless
 rem 0.9.9: ground markers and arc_board (samples\board)
 cl %CFLAGS% /DARC_HEADLESS_ONLY samples\board\board.c src\arc.c /Fo:build\ /Fe:build\board_headless.exe || exit /b 1
 python tools\arc_check.py tests\board_check.md --exe build\board_headless.exe || exit /b 1
+cl %CFLAGS% /DARC_HEADLESS_ONLY samples\terrain\terrain.c src\arc.c /Fo:build\ /Fe:build\terrain_headless.exe || exit /b 1
+python tools\arc_check.py tests\terrain_colour_check.md --exe build\terrain_headless.exe || exit /b 1
 rem 0.10.0: brains, senses, shots, camera rigs (samples\action)
 cl %CFLAGS% /DARC_HEADLESS_ONLY samples\action\action.c src\arc.c /Fo:build\ /Fe:build\action_headless.exe || exit /b 1
 python tools\arc_check.py tests\action_check.md --exe build\action_headless.exe || exit /b 1
@@ -112,6 +114,9 @@ python tools\arc_check.py tests\nan_check.md --exe build\demo_headless.exe || ex
 python tools\arc_check.py tests\text_check.md --exe build\demo_headless.exe || exit /b 1
 python tools\arc_check.py tests\save_path_check.md --exe build\demo_headless.exe || exit /b 1
 python tools\arc_check.py tests\command_clash_check.md --exe build\demo_headless.exe || exit /b 1
+python tools\arc_check.py tests\offset2d_check.md --exe build\demo_headless.exe || exit /b 1
+python tools\arc_check.py tests\lines2d_check.md --exe build\demo_headless.exe || exit /b 1
+python tools\arc_check.py tests\music_loop_check.md --exe build\demo_headless.exe || exit /b 1
 python tools\arc_check.py tools\tests\two_blocks.md > build\two_blocks.txt
 if not errorlevel 1 (echo ARC error arc_check should fail one block & exit /b 1)
 findstr /c:"2/3 blocks passed" build\two_blocks.txt >nul || (type build\two_blocks.txt & echo ARC error arc_check blocks & exit /b 1)

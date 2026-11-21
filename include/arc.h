@@ -55,8 +55,8 @@ extern "C" {
 #define ARC_GAME_API
 #endif
 
-#define ARC_VERSION "0.10.12"
-#define ARC_VERSION_NUM 1012  /* major*10000 + minor*100 + patch; games can #if ARC_VERSION_NUM < ... #error */
+#define ARC_VERSION "0.10.13"
+#define ARC_VERSION_NUM 1013  /* major*10000 + minor*100 + patch; games can #if ARC_VERSION_NUM < ... #error */
 /* 0.9.8 feature macros: one per feature group, so a game (or its CMake) can #if on what this arc.h has instead of
    searching it for function names. The value is the ARC_VERSION_NUM it arrived in. New groups are added here with
    each release; a macro is never removed while its feature stays. */
@@ -109,6 +109,10 @@ extern "C" {
 #define ARC_HAS_POST_NAN_SAFE  1012  /* post effects turn NaN / Inf pixels black; `post nan on`, frame.post.nan_pixels */
 #define ARC_HAS_TEXT_SNAP      1012  /* the built-in font on whole pixels and whole sizes; arc_text_snap_builtin, ARC_TEXT_EXACT */
 #define ARC_HAS_PANEL_OFFSET   1012  /* arc_ui_panel_offset / arc_ui_set_panel_offset / arc_ui_panel_rect; panels kept on screen */
+#define ARC_HAS_OFFSET2D       1013  /* arc_push_offset2d / arc_pop_offset2d / arc_offset2d: 2D drawn inside a moved, clipped area */
+#define ARC_HAS_LINES2D        1013  /* arc_draw_lines2d (thick glowing 2D segments in bulk); arc_app.max_2d_vertices; frame.vertices_2d */
+#define ARC_HAS_MUSIC_LOOP     1013  /* arc_music_set_loop / arc_music_set_loop_fade; --audio-sim runs the mixer headless */
+#define ARC_HAS_TERRAIN_COLOR_MAP 1013  /* arc_terrain_desc.color_map, arc_terrain_set_color_map, arc_terrain_set_splat */
 
 /* ======================================================================== */
 /* Math (header-only, inlined)                                              */
@@ -403,6 +407,9 @@ typedef struct {
        differ by a level or two per channel (decoders round differently). Desktop and headless runs are unchanged.
        Also --browser-decode / --no-browser-decode, and --image-decoder bitmap|imagedecoder|img (tests). false = off. */
     bool browser_decode;
+    /* 0.10.13: 2D vertices a frame (text, rects, sprites, 2D lines: 6 a quad); 0 = 1,048,576. Over it, later 2D draws
+       are dropped (the HUD, drawn last, first): stats.vertices_2d says how close a frame comes. 24 bytes each. */
+    int max_2d_vertices;
 } arc_app;
 
 ARC_GAME_API arc_app  arc_main(int argc, char **argv);   /* YOU implement this */
@@ -1326,7 +1333,12 @@ ARC_API void arc_draw_grid(float half_size, float step, uint32_t rgb);
 /* 2D overlay in screen pixels (origin top-left), drawn after 3D in call order. */
 ARC_API void arc_draw_rect(float x, float y, float w, float h, uint32_t argb_or_rgb);
 ARC_API void arc_draw_rect_lines(float x, float y, float w, float h, uint32_t rgb);
-ARC_API void arc_draw_line2d(float x0, float y0, float x1, float y1, float thickness, uint32_t rgb);   /* 1.5 px and wider: soft edges (0.10.11) */
+ARC_API void arc_draw_line2d(float x0, float y0, float x1, float y1, float thickness, uint32_t rgb);
+/* 0.10.13 glowing 2D lines, one quad each: count points taken in pairs; width: the bright core in pixels (soft edges);
+   glow: the halo on each side as a multiple of the width (0 = none); halo_alpha: the halo's strength next to the core
+   (0..1), fading to nothing at its edge. 6 vertices a segment, against 12 for a halo and a core drawn separately.
+   frame.lines.lines2d counts segments. (Core share and halo strength go in 16 steps each.) */
+ARC_API void arc_draw_lines2d(const arc_v2 *pts, int count, float width, float glow, float halo_alpha, uint32_t rgb);   /* 1.5 px and wider: soft edges (0.10.11) */
 /* Nine-slice: the texture's corners (src_border texels square) drawn dst_border pixels square and unstretched,
    its edges stretched one way, its middle both ways, to fill x, y, w, h. Frames, panels and buttons of any size.
    Corners shrink when the rect is smaller than two borders. (0.6.1) */
@@ -1408,6 +1420,15 @@ ARC_API size_t arc_rich_strip(const char *text, char *out, size_t cap);   /* the
 typedef enum { ARC_BLEND_ALPHA = 0, ARC_BLEND_ADD, ARC_BLEND_MULTIPLY, ARC_BLEND_NONE } arc_blend;
 ARC_API void      arc_set_blend(arc_blend b);       /* applies to following 2D draws; ALPHA by default each frame */
 ARC_API arc_blend arc_get_blend(void);
+/* 2D offsets (0.10.13): 2D drawn after arc_push_offset2d(x, y, w, h) is moved by (x, y) pixels and, when w and h are
+   above 0, clipped to that area (inside any clip already set); pushes nest up to 8 deep and add up; arc_pop_offset2d
+   undoes the last. With the safe area: arc_rectf sa = arc_safe_area(); arc_push_offset2d(sa.x, sa.y, sa.w, sa.h); draw
+   a layout for a sa.w x sa.h window from (0, 0); arc_pop_offset2d(). frame boxes report where things land. The mouse
+   is not moved: subtract arc_offset2d() (the total in force) for hit tests in draw, or the safe area's x, y in tick.
+   Offsets left pushed are dropped at the end of the frame (with a hint). */
+ARC_API void      arc_push_offset2d(float x, float y, float w, float h);
+ARC_API void      arc_pop_offset2d(void);
+ARC_API arc_v2    arc_offset2d(void);
 ARC_API void      arc_set_clip(float x, float y, float w, float h);   /* cut off 2D draws outside this rect (pixels of the current target) */
 ARC_API void      arc_clear_clip(void);
 typedef struct { float x, y, u, v; uint32_t color; } arc_vertex2d;   /* color 0xAARRGGBB, alpha 0 = opaque (see arc_rgba) */
@@ -1482,6 +1503,8 @@ typedef struct {
     int textures, textures_compressed;   /* 0.7.1: textures alive, of which stored block-compressed on the GPU */
     long long texture_bytes;         /* 0.7.1: their GPU memory (estimate: RGBA8 4 bytes a texel and +1/3 with mipmaps,
                                         compressed as stored; render targets included) */
+    int vertices_2d, vertices_2d_max;   /* 0.10.13: 2D vertices this frame and the limit (arc_app.max_2d_vertices):
+                                        lower the detail before vertices_2d reaches it */
 } arc_gfx_stats;
 ARC_API arc_gfx_stats arc_stats(void);
 /* The engine's FPS overlay (top left): frame rate, frame-time percentiles and the worst frame of the last 10 s,
@@ -1658,6 +1681,13 @@ ARC_API void      arc_music_pause(arc_music m, bool paused);
 ARC_API void      arc_music_set_volume(arc_music m, float volume);
 ARC_API bool      arc_music_playing(arc_music m);
 ARC_API float     arc_music_length(arc_music m);            /* seconds */
+/* 0.10.13 a loop section: when the track loops it goes back to start_s and plays to end_s (seconds; 0 = the file's end),
+   seamlessly; the first play still starts at 0, so an intro plays once. arc_music_set_loop(m, 0, 0) loops the whole
+   file again. MP3s are decoded to start_s once, when this is called. arc_music_set_loop_fade: a crossfade of that many
+   seconds (0..2) into the loop point, for sections that don't quite line up (0.08 is a good start): the jump then
+   happens fade seconds before end_s while the end fades out over it. arc_music_position reads the place in the file. */
+ARC_API void      arc_music_set_loop(arc_music m, float start_s, float end_s);
+ARC_API void      arc_music_set_loop_fade(arc_music m, float seconds);
 /* Variety and limits. A sound can vary each time it plays: pitch by up to +-semitones and volume down by up to
    volume_range (0.2 = 80..100%), drawn from the audio system's own generator (arc_audio_seed), never arc_rand_*, so
    the game's random stream is untouched. Limits: at most max_voices of a sound (or on a bus) at once; a play over
@@ -2515,6 +2545,9 @@ typedef struct {
     float splat_sharpness;      /* 0..1, see arc_material.splat_sharpness */
     const arc_material *material;   /* optional extras (detail layer, pbr, roughness); its splat fields are replaced */
     float lod_distance;         /* chunks further than this use half, beyond twice it a quarter of the triangles (0 = 4 chunk sizes; -1 = full detail always) */
+    arc_texture color_map;      /* 0.10.13: a picture over the whole terrain (origin .. origin + size, like the splat map), multiplied into
+                                   the splatted ground: white changes nothing. {0} = none. Copied when given (change it later with
+                                   arc_terrain_set_color_map); it takes the place of a detail layer in `material` (7 bits a channel) */
 } arc_terrain_desc;
 ARC_API arc_terrain arc_terrain_create(const arc_terrain_desc *d);   /* {0} on bad input (logged) */
 ARC_API void   arc_terrain_destroy(arc_terrain t);
@@ -2589,6 +2622,12 @@ ARC_API float  arc_terrain_layer_weight(arc_terrain t, float x, float z, int lay
    NULL: just the count). For arc_physics_add_triangles and arc_navmesh_add_triangles. */
 ARC_API int    arc_terrain_triangles(arc_terrain t, arc_v3 *out, int max);
 ARC_API arc_texture arc_terrain_splat_map(arc_terrain t);   /* RGBA = layer weights (for a minimap) */
+/* 0.10.13 (Grand Token Acquisition): ten kinds of ground from four layers. Bake the map's look into a colour map and let
+   the layers add texture on top; write a whole splat map at once (both the texture and the copy arc_terrain_layer_weight,
+   _paint and scatter read; arc_texture_update on arc_terrain_splat_map changes only the picture). */
+ARC_API void   arc_terrain_set_color_map(arc_terrain t, arc_texture tex);   /* copied now: call again after changing tex; {0} = none */
+ARC_API void   arc_terrain_set_splat(arc_terrain t, const uint8_t *rgba);   /* splat_res * splat_res RGBA weights, rows along +x from origin */
+ARC_API int    arc_terrain_splat_res(arc_terrain t);                        /* the splat map's side in pixels */
 
 typedef struct { uint32_t id; } arc_scatter;
 typedef struct {

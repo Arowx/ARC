@@ -269,7 +269,7 @@ ARC_API bool arc_read_pool(arc_reader *r, arc_pool *p);
 ```c
 typedef struct arc_json arc_json;
 typedef struct arc_net_ev arc_net_ev;    // 0.8 multiplayer events (see Multiplayer below)
-typedef struct { const char *title; int width, height; int tick_hz; uint32_t clear_color; size_t perm_mb, frame_mb; void (*init)(void); void (*tick)(void); void (*draw)(float alpha); void (*dump)(arc_json *j); void (*shutdown)(void); bool (*command)(const char *name, int argc, const char **argv); bool resizable; int min_width, min_height; const char *save_folder; bool immediate; const char *own_flags; int msaa; bool hidpi; bool dev_keys; size_t (*save_state)(void *buf, size_t cap); bool (*load_state)(const void *buf, size_t size); bool hot_reload; void (*reloaded)(void); bool sessions; void (*draw_loading)(float progress); int depth_mode; void (*net_event)(const arc_net_ev *ev); size_t (*net_state)(void *buf, size_t cap); size_t (*net_input)(void *buf, size_t cap); void (*draw_top)(float alpha); bool browser_decode; } arc_app;
+typedef struct { const char *title; int width, height; int tick_hz; uint32_t clear_color; size_t perm_mb, frame_mb; void (*init)(void); void (*tick)(void); void (*draw)(float alpha); void (*dump)(arc_json *j); void (*shutdown)(void); bool (*command)(const char *name, int argc, const char **argv); bool resizable; int min_width, min_height; const char *save_folder; bool immediate; const char *own_flags; int msaa; bool hidpi; bool dev_keys; size_t (*save_state)(void *buf, size_t cap); bool (*load_state)(const void *buf, size_t size); bool hot_reload; void (*reloaded)(void); bool sessions; void (*draw_loading)(float progress); int depth_mode; void (*net_event)(const arc_net_ev *ev); size_t (*net_state)(void *buf, size_t cap); size_t (*net_input)(void *buf, size_t cap); void (*draw_top)(float alpha); bool browser_decode; int max_2d_vertices; } arc_app;
 ARC_GAME_API arc_app arc_main(int argc, char **argv);    // YOU implement this
 ```
 
@@ -1284,7 +1284,16 @@ ARC_API void arc_draw_grid(float half_size, float step, uint32_t rgb);
 ```c
 ARC_API void arc_draw_rect(float x, float y, float w, float h, uint32_t argb_or_rgb);
 ARC_API void arc_draw_rect_lines(float x, float y, float w, float h, uint32_t rgb);
-ARC_API void arc_draw_line2d(float x0, float y0, float x1, float y1, float thickness, uint32_t rgb);    // 1.5 px and wider: soft edges (0.10.11)
+ARC_API void arc_draw_line2d(float x0, float y0, float x1, float y1, float thickness, uint32_t rgb);
+```
+
+0.10.13 glowing 2D lines, one quad each: count points taken in pairs; width: the bright core in pixels (soft edges);
+   glow: the halo on each side as a multiple of the width (0 = none); halo_alpha: the halo's strength next to the core
+   (0..1), fading to nothing at its edge. 6 vertices a segment, against 12 for a halo and a core drawn separately.
+   frame.lines.lines2d counts segments. (Core share and halo strength go in 16 steps each.)
+
+```c
+ARC_API void arc_draw_lines2d(const arc_v2 *pts, int count, float width, float glow, float halo_alpha, uint32_t rgb);    // 1.5 px and wider: soft edges (0.10.11)
 ```
 
 Nine-slice: the texture's corners (src_border texels square) drawn dst_border pixels square and unstretched,
@@ -1410,6 +1419,19 @@ ARC_API size_t arc_rich_strip(const char *text, char *out, size_t cap);    // th
 typedef enum { ARC_BLEND_ALPHA = 0, ARC_BLEND_ADD, ARC_BLEND_MULTIPLY, ARC_BLEND_NONE } arc_blend;
 ARC_API void arc_set_blend(arc_blend b);    // applies to following 2D draws; ALPHA by default each frame
 ARC_API arc_blend arc_get_blend(void);
+```
+
+2D offsets (0.10.13): 2D drawn after arc_push_offset2d(x, y, w, h) is moved by (x, y) pixels and, when w and h are
+   above 0, clipped to that area (inside any clip already set); pushes nest up to 8 deep and add up; arc_pop_offset2d
+   undoes the last. With the safe area: arc_rectf sa = arc_safe_area(); arc_push_offset2d(sa.x, sa.y, sa.w, sa.h); draw
+   a layout for a sa.w x sa.h window from (0, 0); arc_pop_offset2d(). frame boxes report where things land. The mouse
+   is not moved: subtract arc_offset2d() (the total in force) for hit tests in draw, or the safe area's x, y in tick.
+   Offsets left pushed are dropped at the end of the frame (with a hint).
+
+```c
+ARC_API void arc_push_offset2d(float x, float y, float w, float h);
+ARC_API void arc_pop_offset2d(void);
+ARC_API arc_v2 arc_offset2d(void);
 ARC_API void arc_set_clip(float x, float y, float w, float h);    // cut off 2D draws outside this rect (pixels of the current target)
 ARC_API void arc_clear_clip(void);
 typedef struct { float x, y, u, v; uint32_t color; } arc_vertex2d;    // color 0xAARRGGBB, alpha 0 = opaque (see arc_rgba)
@@ -1498,7 +1520,7 @@ ARC_API void arc_screenshot_after_frame(const char *path);
 ```c
 ARC_API void arc_sheet_add(arc_mesh mesh, arc_m4 model, const arc_mesh_style *style, const char *label);
 ARC_API int arc_sheet_count(void);    // items registered while collecting
-typedef struct { int draw_calls, instances, triangles, lines, quads, passes; float cpu_ms, frame_ms; float tick_ms; double avg_frame_ms; const char *backend; int dropped; int culled; int lod_instances[4]; int cells_visible; int static_draws; int textures, textures_compressed; long long texture_bytes; } arc_gfx_stats;
+typedef struct { int draw_calls, instances, triangles, lines, quads, passes; float cpu_ms, frame_ms; float tick_ms; double avg_frame_ms; const char *backend; int dropped; int culled; int lod_instances[4]; int cells_visible; int static_draws; int textures, textures_compressed; long long texture_bytes; int vertices_2d, vertices_2d_max; } arc_gfx_stats;
 ARC_API arc_gfx_stats arc_stats(void);
 ```
 
@@ -1723,6 +1745,17 @@ ARC_API void arc_music_pause(arc_music m, bool paused);
 ARC_API void arc_music_set_volume(arc_music m, float volume);
 ARC_API bool arc_music_playing(arc_music m);
 ARC_API float arc_music_length(arc_music m);    // seconds
+```
+
+0.10.13 a loop section: when the track loops it goes back to start_s and plays to end_s (seconds; 0 = the file's end),
+   seamlessly; the first play still starts at 0, so an intro plays once. arc_music_set_loop(m, 0, 0) loops the whole
+   file again. MP3s are decoded to start_s once, when this is called. arc_music_set_loop_fade: a crossfade of that many
+   seconds (0..2) into the loop point, for sections that don't quite line up (0.08 is a good start): the jump then
+   happens fade seconds before end_s while the end fades out over it. arc_music_position reads the place in the file.
+
+```c
+ARC_API void arc_music_set_loop(arc_music m, float start_s, float end_s);
+ARC_API void arc_music_set_loop_fade(arc_music m, float seconds);
 ```
 
 Variety and limits. A sound can vary each time it plays: pitch by up to +-semitones and volume down by up to
@@ -2548,7 +2581,7 @@ A terrain is a grid of heights drawn as chunks of triangles (lower detail furthe
 
 ```c
 typedef struct { uint32_t id; } arc_terrain;
-typedef struct { const float *heights; int samples_x, samples_z; float size_x, size_z; arc_v3 origin; int chunk; int splat_res; arc_texture layers[4]; int layer_count; float layer_scale[4]; float splat_sharpness; const arc_material *material; float lod_distance; } arc_terrain_desc;
+typedef struct { const float *heights; int samples_x, samples_z; float size_x, size_z; arc_v3 origin; int chunk; int splat_res; arc_texture layers[4]; int layer_count; float layer_scale[4]; float splat_sharpness; const arc_material *material; float lod_distance; arc_texture color_map; } arc_terrain_desc;
 ARC_API arc_terrain arc_terrain_create(const arc_terrain_desc *d);    // {0} on bad input (logged)
 ARC_API void arc_terrain_destroy(arc_terrain t);
 ARC_API void arc_terrain_draw(arc_terrain t, uint32_t tint);    // from draw(); chunks cast and take shadows
@@ -2615,6 +2648,16 @@ full-detail triangles in world space, 3 points each: fills up to `max` points an
 ```c
 ARC_API int arc_terrain_triangles(arc_terrain t, arc_v3 *out, int max);
 ARC_API arc_texture arc_terrain_splat_map(arc_terrain t);    // RGBA = layer weights (for a minimap)
+```
+
+0.10.13 (Grand Token Acquisition): ten kinds of ground from four layers. Bake the map's look into a colour map and let
+   the layers add texture on top; write a whole splat map at once (both the texture and the copy arc_terrain_layer_weight,
+   _paint and scatter read; arc_texture_update on arc_terrain_splat_map changes only the picture).
+
+```c
+ARC_API void arc_terrain_set_color_map(arc_terrain t, arc_texture tex);    // copied now: call again after changing tex; {0} = none
+ARC_API void arc_terrain_set_splat(arc_terrain t, const uint8_t *rgba);    // splat_res * splat_res RGBA weights, rows along +x from origin
+ARC_API int arc_terrain_splat_res(arc_terrain t);    // the splat map's side in pixels
 typedef struct { uint32_t id; } arc_scatter;
 typedef struct { arc_mesh mesh; float density; int layer; float min_weight; float height_min, height_max; float slope_max; float scale_min, scale_max; float align; float sink; bool fixed_yaw; uint32_t tint, tint2; float draw_distance; uint32_t seed; } arc_scatter_desc;
 ARC_API arc_scatter arc_scatter_create(arc_terrain t, const arc_scatter_desc *d);

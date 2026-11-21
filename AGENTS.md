@@ -159,6 +159,25 @@ as for games with `draw()`.
   buttons take any finger. Test with `touch down 0 200 400; step 2; touch down 1 1100 600; step 2` and
   `expect input.touches == 2`. Fingers are recorded and replayed like keys.
 
+## Safe-area HUDs, 2D lines in bulk, music loops, terrain colour maps (0.10.13)
+
+- **HUD inside the safe area:** `arc_rectf sa = arc_safe_area(); arc_push_offset2d(sa.x, sa.y, sa.w, sa.h);` then
+  draw the HUD from (0, 0) for a `sa.w` x `sa.h` screen, then `arc_pop_offset2d()`. Everything 2D is moved and
+  clipped, and `frame` boxes show where it lands. Test with `args --safe-area 40,0,40,20` and
+  `expect frame.texts[text=PAUSED].box[0] >= 40` (one of your texts, matched exactly).
+- **Many glowing 2D lines:** `arc_draw_lines2d(pts, n, width, glow, halo_alpha, rgb)` takes point pairs (build them
+  in the frame arena). It costs 6 vertices a segment. Raise `arc_app.max_2d_vertices` if `frame.vertices_2d` gets
+  near `vertices_2d_max`, and check `frame.dropped == 0` and `frame.lines.lines2d`. `hud off` hides these lines too,
+  so don't use it in a check of them.
+- **Music with an intro:** `arc_music_play(m, true); arc_music_set_loop(m, 8.0f, 72.0f);` plays 0..72 s, then loops
+  8..72 s; `arc_music_set_loop_fade(m, 0.05f)` crossfades the seam. Headless runs have no mixer: add `--audio-sim`
+  (`args --audio-sim` in a check) and put `arc_music_position` in `dump()`.
+- **Terrain with many kinds of ground:** bake a colour map of the whole terrain and pass `color_map` in
+  `arc_terrain_desc` (or call `arc_terrain_set_color_map`); the four splat layers add detail on top. Write a whole
+  splat map with `arc_terrain_set_splat(t, rgba)` (`arc_terrain_splat_res(t)` a side), not with `arc_texture_update`
+  on `arc_terrain_splat_map`: only `set_splat` updates the weights that `arc_terrain_layer_weight`, paint and scatter
+  read.
+
 ## Hints (0.9.0)
 
 ARC prints `ARC hint <what went wrong>: <the fix>` once per kind when a game does something that works but breaks testing or speed:
@@ -377,6 +396,7 @@ grep for the macro in a build script, instead of searching `arc.h` for function 
 | `--shot-at 40,80,120` | Screenshots after those ticks, drawn only then (`40=boom.png` names one; `--shot-name shot_%d.png`). Without `--frames` the run ends after the last shot (0.9.8). |
 | `--no-assets` | Loaded images keep their size but not their pixels (a flat colour), sounds their length but not their samples: lighter headless test processes (0.9.8). `frame`, `dump` and picking still work; pictures don't. |
 | `--mute` | No audio. |
+| `--audio-sim` | Headless: run the audio mixer at the tick rate (no sound card), so music positions, loops and fades can be tested (0.10.13). |
 | `--no-vsync` | Turns off vsync. |
 | `--save-dir DIR` | Where `arc_save` writes (headless default: `./arc_saves`). |
 | `--hot` | Reload textures, meshes, animations, sounds and levels (`arc_level_load`) when their files change (desktop). |
