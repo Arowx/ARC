@@ -84,6 +84,7 @@ case "$target" in
             ${CC:-cc} $CFLAGS -D_GNU_SOURCE -DARC_HEADLESS_ONLY tests/split_game.c src/arc.c -o build/split_headless -lm   # 0.10.2 split-screen viewports
             python3 tools/arc_check.py tests/split_check.md --exe build/split_headless > build/split_check.txt || { cat build/split_check.txt; exit 1; }; tail -1 build/split_check.txt
             ${CC:-cc} $CFLAGS -D_GNU_SOURCE -DARC_HEADLESS_ONLY samples/demo/demo.c src/arc.c -o build/demo_headless -lm   # 0.10.11 lines and touch (Vector Trader)
+            python3 tools/arc_request.py tests/offset2d_check.md --game test --dry-run > /dev/null   # 0.10.13 request tool (no network)
             for c in line touch nan text save_path command_clash offset2d lines2d music_loop; do python3 tools/arc_check.py tests/${c}_check.md --exe build/demo_headless > build/${c}_check.txt || { cat build/${c}_check.txt; exit 1; }; tail -1 build/${c}_check.txt; done
             python3 tests/line_width_test.py build/demo_headless || exit 1
             python3 tests/touch_replay_test.py build/demo_headless || exit 1

@@ -117,6 +117,7 @@ python tools\arc_check.py tests\command_clash_check.md --exe build\demo_headless
 python tools\arc_check.py tests\offset2d_check.md --exe build\demo_headless.exe || exit /b 1
 python tools\arc_check.py tests\lines2d_check.md --exe build\demo_headless.exe || exit /b 1
 python tools\arc_check.py tests\music_loop_check.md --exe build\demo_headless.exe || exit /b 1
+python tools\arc_request.py tests\offset2d_check.md --game test --dry-run > NUL || exit /b 1
 python tools\arc_check.py tools\tests\two_blocks.md > build\two_blocks.txt
 if not errorlevel 1 (echo ARC error arc_check should fail one block & exit /b 1)
 findstr /c:"2/3 blocks passed" build\two_blocks.txt >nul || (type build\two_blocks.txt & echo ARC error arc_check blocks & exit /b 1)

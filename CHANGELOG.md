@@ -38,6 +38,10 @@ Vector Trader and Grand Token Acquisition.
     `arc_terrain_layer_weight`, `arc_terrain_paint` and scatter agree with it. `arc_terrain_splat_res(t)` gives its
     side in pixels.
   - `samples/terrain` has a `terrain_colour red|map|off` command.
+- **Requests as GitHub issues:** `tools/arc_request.py request.md --game NAME` files a request as an issue on the ARC
+  repository, labelled `request`, so requests can be picked up while the PC that wrote them is off. `--list` shows
+  the open ones. It uses `gh api` (REST); if GitHub can't be reached it saves the request in `incoming/`, as before.
+  `docs/REQUESTS.md` and AGENTS.md describe it. `build test` runs a `--dry-run`.
 - Feature macros: `ARC_HAS_OFFSET2D`, `ARC_HAS_LINES2D`, `ARC_HAS_MUSIC_LOOP`, `ARC_HAS_TERRAIN_COLOR_MAP` (1013).
 
 ## 0.10.12 — 21 Nov 2026: NaN-safe post effects, crisp built-in text, every arc-check block, panel positions

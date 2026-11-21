@@ -178,6 +178,13 @@ as for games with `draw()`.
   on `arc_terrain_splat_map`: only `set_splat` updates the weights that `arc_terrain_layer_weight`, paint and scatter
   read.
 
+## Asking ARC for a change (0.10.13)
+
+When the game needs something ARC doesn't do, write the request in the `docs/REQUESTS.md` template, with an
+arc-check block that passes once it's done. Then file it with `python3 <ARC>/tools/arc_request.py request.md --game
+"My Game"`: it becomes a GitHub issue, or a file in `<ARC>/incoming/` when GitHub can't be reached. Carry on with a
+workaround meanwhile, and say in the request what the workaround is.
+
 ## Hints (0.9.0)
 
 ARC prints `ARC hint <what went wrong>: <the fix>` once per kind when a game does something that works but breaks testing or speed:

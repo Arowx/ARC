@@ -1,12 +1,22 @@
 # Asking for an ARC change
 
-Games ask for engine changes with a markdown file in `D:\Projects\ARC\incoming\` (one request per file, named
-`<game>-<topic>.md`). This template keeps requests quick to act on, and its acceptance block runs as a test with
-`tools/arc_check.py`, so "done" means the same thing to the game and to ARC.
+**File a request as a GitHub issue (0.10.13):** write it in the template below, then
 
-When a request is done, ARC adds a "Done in ARC x.y.z" section to the end of the file (what changed, how to use it,
-which test covers it) and moves it to `D:\Projects\ARC\done-notes\`. So `incoming` holds only what is still to do,
-and `done-notes` is the record of every request and its answer.
+```sh
+python3 <ARC>/tools/arc_request.py request.md --game "Vector Trader"
+```
+
+It becomes an issue on the ARC repository with the `request` label, titled `[Game] <the first heading>`, so it can be
+picked up while your machine is off. The release that does it closes the issue and adds the done-note as a comment:
+what changed, how to use it, which test covers it. `--list` shows the open requests. The script needs `gh` signed in
+with access to the repository (`gh auth login` once). It uses the REST API, so it also works where GraphQL is blocked.
+If GitHub can't be reached, it saves the request in `<ARC>/incoming/` instead and says so.
+
+**The old way still works:** a markdown file in `D:\Projects\ARC\incoming\`, one request per file, named
+`<game>-<topic>.md`. When that request is done, ARC adds a "Done in ARC x.y.z" section and copies it to `done-notes/`.
+
+The template keeps requests quick to act on. Its acceptance block runs as a test with `tools/arc_check.py`, so "done"
+means the same thing to the game and to ARC.
 
 ## Template
 
