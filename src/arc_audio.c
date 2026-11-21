@@ -103,7 +103,7 @@ typedef struct {
     float s0[2], s1[2]; double t; bool primed;                /* mixer resampler */
 } stream_rec;
 typedef struct { float cur, target, step; int delay; } music_ramp;   /* a gain gliding to target, step per frame, after delay frames */
-typedef struct {
+typedef struct music_rec_s {
     bool used; const uint8_t *data; size_t size; qoa_info info;
     arc__mp3 *mp3;                                        /* MP3 music: the decoder (else QOA) */
     /* owned by the mixer thread */
@@ -113,6 +113,12 @@ typedef struct {
     /* adaptive music: tempo and stems (game side), start delay, fades and position (mixer side) */
     volatile float bpm, first_beat; volatile int beats_per_bar, lead, layer, pending;   /* pending: waits for its start command */
     int64_t played; int delay; music_ramp fade, xf; bool xf_stop; volatile float pos;
+    /* 0.10.13 loop section (Vector Trader): lp_start..lp_end source samples (lp_end 0: the file's end); MP3 jumps by
+       copying lp_snap (the decoder's state at the frame holding lp_start) back, QOA to byte lp_at; then lp_skip samples
+       are dropped. next_src counts source samples from the file's start; i0 / i1: s0's and s1's (for the position).
+       lp_fade > 0: at lp_end - lp_fade a copy of the stream (tail) plays on, fading out, while the main one jumps. */
+    volatile int lp_on; int64_t lp_start, lp_end; void *volatile lp_snap; size_t lp_at; int lp_skip, lp_fade;
+    int skip_pending; int64_t next_src, i0, i1; struct music_rec_s *tail; int tail_n;
 } music_rec;
 enum { CMD_PLAY, CMD_MUSIC_PLAY, CMD_MUSIC_STOP, CMD_VOICE_STOP, CMD_VOICE_SET, CMD_STREAM_CLEAR, CMD_STREAM_FREE, CMD_FX,
        CMD_MUSIC_FADE, CMD_MUSIC_INTENSITY, CMD_MUSIC_SWITCH };
@@ -610,6 +616,54 @@ void arc_music_set_tempo(arc_music m, float bpm, int beats_per_bar, float first_
     music_rec *r = music(m); if (!r) return;
     r->bpm = arc_maxf(bpm, 0); r->beats_per_bar = beats_per_bar > 0 ? beats_per_bar : 4; r->first_beat = arc_maxf(first_beat, 0);
 }
+/* 0.10.13 a loop section: decode to start_s once here (the game's thread), keep the decoder's state, and jump back to
+   it when the track loops */
+void arc_music_set_loop(arc_music mu, float start_s, float end_s) {
+    music_rec *m = music(mu); if (!m) return;
+    if (start_s <= 0 && end_s <= 0) { m->lp_on = 0; return; }
+    int64_t start = (int64_t)((double)arc_maxf(start_s, 0) * m->info.rate + 0.5), end = end_s > 0 ? (int64_t)((double)end_s * m->info.rate + 0.5) : 0;
+    if (m->info.frames > 0) { if (start >= m->info.frames) start = 0; if (end > m->info.frames) end = 0; }
+    if (end && end <= start) { arc_log("arc_music_set_loop: end %.3f is not after start %.3f", (double)end_s, (double)start_s); return; }
+    size_t at = 8; int skip = 0; void *snap = NULL;
+    if (m->mp3) {
+        arc__mp3 *d = (arc__mp3 *)arc__xalloc(arc__mp3_state_size()), *before = (arc__mp3 *)arc__xalloc(arc__mp3_state_size());
+        arc__mp3_open(d, m->data, m->size);
+        static int16_t tmp[1152 * 2 * 2]; int64_t acc = 0;
+        for (;;) {
+            memcpy(before, d, arc__mp3_state_size());
+            int k = arc__mp3_read(d, tmp);
+            if (k < 0) { memcpy(before, d, arc__mp3_state_size()); arc__mp3_rewind(before); acc = 0; start = 0; break; }
+            if (acc + k > start) break;
+            acc += k;
+        }
+        skip = (int)(start - acc); free(d); snap = before;
+    } else {
+        int64_t acc = 0;
+        while (at + 8 <= m->size) {
+            const uint8_t *f = m->data + at;
+            int fs = (f[4] << 8) | f[5]; size_t sz = (size_t)((f[6] << 8) | f[7]);
+            if (fs <= 0 || sz < 8 || at + sz > m->size) break;
+            if (acc + fs > start) break;
+            acc += fs; at += sz;
+        }
+        skip = (int)(start - acc);
+    }
+    void *old_snap = m->lp_snap;
+    m->lp_on = 0;   /* (the mixer stops using the old section while it is replaced) */
+    m->lp_start = start; m->lp_end = end; m->lp_at = at; m->lp_skip = skip; m->lp_snap = snap;
+    m->lp_on = 1;
+    (void)old_snap;   /* (kept: the mixer may still be inside it; a few KB per call) */
+}
+void arc_music_set_loop_fade(arc_music mu, float seconds) {
+    music_rec *m = music(mu); if (!m) return;
+    int n = (int)(arc_clampf(seconds, 0, 2) * (float)m->info.rate);
+    if (n > 0 && !m->tail) {
+        music_rec *t = (music_rec *)arc__xalloc(sizeof *t); memset(t, 0, sizeof *t);
+        if (m->mp3) t->mp3 = (arc__mp3 *)arc__xalloc(arc__mp3_state_size());
+        m->tail = t;
+    }
+    m->lp_fade = n;
+}
 float arc_music_position(arc_music m) { music_rec *r = music(m); return r ? r->pos : 0; }
 float arc_music_beat(arc_music m) { music_rec *r = music(m); return r && r->bpm > 0 ? (r->pos - r->first_beat) * r->bpm / 60.0f : 0; }
 void arc_music_switch(arc_music from, arc_music to, bool loop, arc_sync when, float fade) {
@@ -634,36 +688,68 @@ bool  arc_music_playing(arc_music m) {
 }
 float arc_music_length(arc_music m) { music_rec *r = music(m); return r ? (float)r->info.frames / (float)r->info.rate : 0; }
 
-static bool music_pull(music_rec *m, float out[2]) {          /* next source sample (both channels) */
+static bool music_pull_raw(music_rec *m, float out[2]) {      /* next source sample (both channels) */
+    bool wrap = m->looping && !m->lp_on;                       /* (with a loop section the caller jumps) */
     if (m->mp3) {
         for (int tries = 0; m->buf_pos >= m->buf_len; tries++) {
             int k = arc__mp3_read(m->mp3, m->buf);
             if (k < 0) {
-                if (!m->looping || tries > 1) return false;   /* (a file with no audio would loop forever) */
+                if (!wrap || tries > 1) return false;          /* (a file with no audio would loop forever) */
                 arc__mp3_rewind(m->mp3); continue;              /* gapless: the trimmed samples join up exactly */
             }
             m->buf_len = k; m->buf_pos = 0;
+            if (m->skip_pending > 0) { int d = m->skip_pending < k ? m->skip_pending : k; m->buf_pos = d; m->skip_pending -= d; }
         }
         const int16_t *s = m->buf + (size_t)m->buf_pos * m->info.channels; m->buf_pos++;
         out[0] = s[0] / 32768.0f; out[1] = m->info.channels > 1 ? s[1] / 32768.0f : out[0];
         return true;
     }
-    if (m->buf_pos >= m->buf_len) {
+    while (m->buf_pos >= m->buf_len) {
         if (m->at >= m->size) {
-            if (!m->looping) return false;
+            if (!wrap) return false;
             m->at = 8;
         }
         int fs = 0; size_t used = qoa_frame(m->data + m->at, m->size - m->at, m->info.channels, m->buf, &fs);
-        if (!used || fs <= 0) { if (m->at == 8) return false; m->at = m->size; return music_pull(m, out); }
+        if (!used || fs <= 0) { if (m->at == 8) return false; m->at = m->size; continue; }
         m->at += used; m->buf_len = fs; m->buf_pos = 0;
+        if (m->skip_pending > 0) { int d = m->skip_pending < fs ? m->skip_pending : fs; m->buf_pos = d; m->skip_pending -= d; }
     }
     const int16_t *s = m->buf + (size_t)m->buf_pos * m->info.channels; m->buf_pos++;
     out[0] = s[0] / 32768.0f; out[1] = m->info.channels > 1 ? s[1] / 32768.0f : out[0];
     return true;
 }
+static void music_jump(music_rec *m) {                         /* to the loop section's start */
+    void *snap = m->lp_snap;
+    if (m->mp3) { if (snap) memcpy(m->mp3, snap, arc__mp3_state_size()); else arc__mp3_rewind(m->mp3); }
+    else m->at = m->lp_at ? m->lp_at : 8;
+    m->buf_len = m->buf_pos = 0; m->skip_pending = m->lp_skip; m->next_src = m->lp_start;
+}
+static bool music_pull(music_rec *m, float out[2]) {
+    if (m->lp_on) {
+        int64_t end = m->lp_end > 0 ? m->lp_end : (int64_t)m->info.frames;
+        if (m->looping && m->lp_fade > 0 && m->tail && !m->tail_n && end > 0 && m->next_src >= end - m->lp_fade && m->next_src < end) {
+            /* the crossfade: a copy of the stream plays its last lp_fade samples while this one starts the section again */
+            music_rec *t = m->tail; arc__mp3 *keep = t->mp3;
+            memcpy(t, m, sizeof *t); t->mp3 = keep; t->tail = NULL; t->lp_on = 0; t->looping = 0;
+            if (m->mp3 && keep) memcpy(keep, m->mp3, arc__mp3_state_size());
+            m->tail_n = (int)(end - m->next_src);
+            music_jump(m);
+        } else if (m->looping && m->lp_end > 0 && m->next_src >= m->lp_end) music_jump(m);
+    }
+    bool ok = music_pull_raw(m, out);
+    if (!ok && m->looping && m->lp_on) { music_jump(m); ok = music_pull_raw(m, out); }
+    if (ok) m->next_src++;
+    if (m->tail_n > 0) {                                       /* equal-power crossfade into the section's start */
+        float o2[2]; int left = m->tail_n--;
+        float k = (float)left / (float)(m->lp_fade > 0 ? m->lp_fade : 1), a = sqrtf(arc_clampf(k, 0, 1)), b = sqrtf(arc_clampf(1.0f - k, 0, 1));
+        if (music_pull_raw(m->tail, o2)) { out[0] = out[0] * b + o2[0] * a; out[1] = out[1] * b + o2[1] * a; }
+    }
+    return ok;
+}
 static void music_restart(music_rec *m) {
     m->at = 8; m->buf_len = m->buf_pos = 0; m->t = 0; m->primed = m->draining = false; if (m->mp3) arc__mp3_rewind(m->mp3);
     m->played = 0; m->delay = 0; m->xf.cur = m->xf.target = 1; m->xf.step = 0; m->xf.delay = 0; m->xf_stop = false;
+    m->next_src = 0; m->i0 = m->i1 = 0; m->skip_pending = 0; m->tail_n = 0;
 }
 
 #define REV_COMBS 4
@@ -842,7 +928,7 @@ static void mix_chunk(float *out, int frames) {
         int i0 = 0;
         if (m->delay > 0) { i0 = m->delay < frames ? m->delay : frames; m->delay -= i0; if (i0 >= frames) continue; }   /* starts on a beat */
         float vol = m->volume * g_bus_vol[ARC_BUS_MUSIC]; double step = (double)m->info.rate / g_rate;
-        if (!m->primed) { if (!music_pull(m, m->s0) || !music_pull(m, m->s1)) { m->ended = 1; continue; } m->primed = true; }
+        if (!m->primed) { if (!music_pull(m, m->s0) || !music_pull(m, m->s1)) { m->ended = 1; continue; } m->primed = true; m->i0 = m->next_src - 2; m->i1 = m->next_src - 1; }
         const float *dg = g_duck_on[ARC_BUS_MUSIC] ? g_dg[ARC_BUS_MUSIC] : NULL;
         bool fx = dg || ramp_on(&m->fade) || ramp_on(&m->xf);
         for (int i = i0; i < frames; i++) {
@@ -861,12 +947,14 @@ static void mix_chunk(float *out, int frames) {
             while (m->t >= 1.0) {
                 m->t -= 1.0;
                 if (m->draining) { m->ended = 1; break; }          /* the last sample has been played */
-                m->s0[0] = m->s1[0]; m->s0[1] = m->s1[1]; m->played++;
+                m->s0[0] = m->s1[0]; m->s0[1] = m->s1[1]; m->played++; m->i0 = m->i1;
                 if (!music_pull(m, m->s1)) { m->s1[0] = m->s0[0]; m->s1[1] = m->s0[1]; m->draining = true; }
+                else m->i1 = m->next_src - 1;
             }
             if (m->ended) break;
         }
         double p = (double)m->played + m->t; if (m->info.frames > 0) p = fmod(p, (double)m->info.frames);
+        if (m->lp_on) p = (double)m->i0 + m->t;                 /* 0.10.13: where in the file (the loop jumps back) */
         m->pos = (float)(p / m->info.rate);
     }
     for (int si = 0; si < MAX_STREAMS; si++) {

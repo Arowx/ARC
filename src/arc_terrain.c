@@ -12,6 +12,7 @@ typedef struct {
     int chunk, ncx, ncz; ter_chunk *ch; float skirt;
     int sres; uint8_t *splat; arc_texture splat_tex, layers; int nlayers;
     int drawn; bool no_cull;                  /* 0.9.7 chunks the last draw drew; culling off */
+    arc_material mat; arc_texture cmap;       /* 0.10.13 the chunks' material as made; the colour map's half-bright copy (see ter_apply_cmap) */
 } ter_rec;
 static ter_rec ter_pool[TER_MAX];
 typedef struct {
@@ -122,6 +123,34 @@ static void ter_splat_world(const ter_rec *T, int px, int py, float *x, float *z
 }
 static void ter_splat_upload(ter_rec *T) { arc_texture_update(T->splat_tex, T->splat); }
 
+/* 0.10.13 the colour map (GTA's request) rides on the material's detail layer, which every renderer already has:
+   colour *= mix(1, 2 * detail, strength), so a copy at half brightness, strength 1 and the mesh's UVs (0..1 over the
+   whole terrain, as the splat map) multiplies the splatted colour by the map. It takes the place of a detail layer
+   from arc_terrain_desc.material (a hint says so); clearing the map gives that back. */
+static void ter_apply_cmap(ter_rec *T) {
+    arc_material m = T->mat;
+    if (T->cmap.id) {
+        if (m.detail.id) arc__hint("terrain-cmap-detail", "a terrain colour map takes the place of its material's detail layer: bake the detail into the layer textures");
+        m.detail = T->cmap; m.detail_scale = 0; m.detail_strength = 1; m.detail_tiling = ARC_TILE_REPEAT; m.detail_rotate = 0; m.detail_contrast = 0;
+        memset(&m.detail_mask, 0, sizeof m.detail_mask);
+    }
+    for (int k = 0; k < T->ncx * T->ncz; k++) for (int l = 0; l < T->ch[k].nlv; l++) arc_mesh_set_material(T->ch[k].lv[l], &m);
+}
+static void ter_set_cmap(ter_rec *T, arc_texture tex) {
+    if (T->cmap.id) { arc_texture_destroy(T->cmap); T->cmap.id = 0; }
+    if (tex.id) {
+        const arc__tex_rec *r = tex.id < ARC__MAX_TEXTURES && arc__textures[tex.id].used ? &arc__textures[tex.id] : NULL;
+        if (!r || !r->rgba || r->layers > 0 || r->w < 1 || r->h < 1) arc_log("arc_terrain_set_color_map: needs a plain RGBA texture (not compressed, not an array, not a render target being drawn)");
+        else {
+            size_t n = (size_t)r->w * r->h; uint8_t *half = (uint8_t *)arc__xalloc(n * 4);
+            for (size_t i = 0; i < n; i++) { for (int c = 0; c < 3; c++) half[i * 4 + c] = (uint8_t)((r->rgba[i * 4 + c] + 1) >> 1); half[i * 4 + 3] = 255; }
+            T->cmap = arc_texture_create_ex(r->w, r->h, half, ARC_TEX_SMOOTH | ARC_TEX_MIPMAPS);
+            free(half);
+        }
+    }
+    ter_apply_cmap(T);
+}
+
 /* ======================================================================== */
 arc_terrain arc_terrain_create(const arc_terrain_desc *d) {
     arc_terrain none = { 0 };
@@ -165,6 +194,7 @@ arc_terrain arc_terrain_create(const arc_terrain_desc *d) {
         arc_mesh_set_texture(C->lv[0], T->splat_tex); arc_mesh_set_material(C->lv[0], &mat);
         for (int l = 1; l < nlv; l++) { arc_mesh_set_texture(C->lv[l], T->splat_tex); arc_mesh_set_material(C->lv[l], &mat); arc_mesh_set_lod_distance(C->lv[0], l, C->lv[l], ld * (float)(1 << (l - 1))); }
     }
+    T->mat = mat; if (d->color_map.id) ter_set_cmap(T, d->color_map);
     T->used = true;
     arc_terrain t = { (uint32_t)slot + 1 }; return t;
 }
@@ -174,6 +204,7 @@ void arc_terrain_destroy(arc_terrain t) {
     if (T->ch) for (int k = 0; k < T->ncx * T->ncz; k++) for (int l = 0; l < T->ch[k].nlv; l++) arc_mesh_destroy(T->ch[k].lv[l]);
     if (T->splat_tex.id) arc_texture_destroy(T->splat_tex);
     if (T->layers.id) arc_texture_destroy(T->layers);
+    if (T->cmap.id) arc_texture_destroy(T->cmap);
     free(T->h); free(T->nrm); free(T->ch); free(T->splat);
     memset(T, 0, sizeof *T);
 }
@@ -349,6 +380,14 @@ int arc_terrain_triangles(arc_terrain t, arc_v3 *out, int max) {
     }
     return (int)total;
 }
+void arc_terrain_set_color_map(arc_terrain t, arc_texture tex) { ter_rec *T = ter_get(t); if (T) ter_set_cmap(T, tex); }
+void arc_terrain_set_splat(arc_terrain t, const uint8_t *rgba) {   /* 0.10.13: the CPU copy too, so weights and paint agree */
+    ter_rec *T = ter_get(t); if (!T || !rgba) return;
+    memcpy(T->splat, rgba, (size_t)T->sres * T->sres * 4);
+    if (T->nlayers < 4) for (size_t i = 0, n = (size_t)T->sres * T->sres; i < n; i++) { for (int c = T->nlayers; c < 3; c++) T->splat[i * 4 + c] = 0; T->splat[i * 4 + 3] = 255; }
+    ter_splat_upload(T);
+}
+int arc_terrain_splat_res(arc_terrain t) { ter_rec *T = ter_get(t); return T ? T->sres : 0; }
 arc_texture arc_terrain_splat_map(arc_terrain t) { ter_rec *T = ter_get(t); arc_texture none = { 0 }; return T ? T->splat_tex : none; }
 
 /* ======================================================================== */

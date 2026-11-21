@@ -20,7 +20,7 @@ A terrain is a grid of heights drawn as chunks of triangles (lower detail furthe
 
 ```c
 typedef struct { uint32_t id; } arc_terrain;
-typedef struct { const float *heights; int samples_x, samples_z; float size_x, size_z; arc_v3 origin; int chunk; int splat_res; arc_texture layers[4]; int layer_count; float layer_scale[4]; float splat_sharpness; const arc_material *material; float lod_distance; } arc_terrain_desc;
+typedef struct { const float *heights; int samples_x, samples_z; float size_x, size_z; arc_v3 origin; int chunk; int splat_res; arc_texture layers[4]; int layer_count; float layer_scale[4]; float splat_sharpness; const arc_material *material; float lod_distance; arc_texture color_map; } arc_terrain_desc;
 ARC_API arc_terrain arc_terrain_create(const arc_terrain_desc *d);    // {0} on bad input (logged)
 ARC_API void arc_terrain_destroy(arc_terrain t);
 ARC_API void arc_terrain_draw(arc_terrain t, uint32_t tint);    // from draw(); chunks cast and take shadows
@@ -87,6 +87,16 @@ full-detail triangles in world space, 3 points each: fills up to `max` points an
 ```c
 ARC_API int arc_terrain_triangles(arc_terrain t, arc_v3 *out, int max);
 ARC_API arc_texture arc_terrain_splat_map(arc_terrain t);    // RGBA = layer weights (for a minimap)
+```
+
+0.10.13 (Grand Token Acquisition): ten kinds of ground from four layers. Bake the map's look into a colour map and let
+   the layers add texture on top; write a whole splat map at once (both the texture and the copy arc_terrain_layer_weight,
+   _paint and scatter read; arc_texture_update on arc_terrain_splat_map changes only the picture).
+
+```c
+ARC_API void arc_terrain_set_color_map(arc_terrain t, arc_texture tex);    // copied now: call again after changing tex; {0} = none
+ARC_API void arc_terrain_set_splat(arc_terrain t, const uint8_t *rgba);    // splat_res * splat_res RGBA weights, rows along +x from origin
+ARC_API int arc_terrain_splat_res(arc_terrain t);    // the splat map's side in pixels
 typedef struct { uint32_t id; } arc_scatter;
 typedef struct { arc_mesh mesh; float density; int layer; float min_weight; float height_min, height_max; float slope_max; float scale_min, scale_max; float align; float sink; bool fixed_yaw; uint32_t tint, tint2; float draw_distance; uint32_t seed; } arc_scatter_desc;
 ARC_API arc_scatter arc_scatter_create(arc_terrain t, const arc_scatter_desc *d);

@@ -2,13 +2,15 @@
    by height and slope rules, and scattered grass tufts, trees and rocks that grow where their layer is. The camera
    circles the valley (arrow keys turn and zoom). Hold the left mouse button to work on the ground under the cursor:
    1 paints dirt, 2 paints grass, 3 raises, 4 lowers, 5 flattens; the scatter regrows when you let go. Agent commands:
-   `paint X Z LAYER`, `sculpt X Z AMOUNT`, `regrow`. dump() reports the copies placed and drawn and the height under
+   `paint X Z LAYER`, `sculpt X Z AMOUNT`, `regrow`, `terrain_colour red|map|off` (0.10.13: a colour map over the
+   ground, solid red or a patchwork of fields; the layers' detail stays on top). dump() reports the copies placed and drawn and the height under
    the camera's target. */
 #include "../../include/arc.h"
 #include <string.h>
 #include <stdlib.h>
 
 #define N 257
+static arc_texture cmap_tex; static int cmap_kind;   /* 0.10.13 terrain_colour: 0 off, 1 red, 2 fields */
 static float heights[N * N];
 static arc_terrain ter;
 static arc_scatter grass, trees, rocks;
@@ -102,11 +104,25 @@ static void dump(arc_json *j) {
     arc_json_num_k(j, "grass", arc_scatter_count(grass)); arc_json_num_k(j, "grass_drawn", arc_scatter_drawn(grass));
     arc_json_num_k(j, "trees", arc_scatter_count(trees)); arc_json_num_k(j, "rocks", arc_scatter_count(rocks));
     arc_json_num_k(j, "height_at_target", arc_terrain_height(ter, 0, 0)); arc_json_num_k(j, "tool", G.tool + 1);
+    arc_json_num_k(j, "colour_map", cmap_kind); arc_json_num_k(j, "dirt_at_0_0", arc_terrain_layer_weight(ter, 0, 0, 1));
 }
 static bool command(const char *name, int argc, const char **argv) {
     if (!strcmp(name, "paint") && argc >= 3) { arc_terrain_paint(ter, (float)atof(argv[0]), (float)atof(argv[1]), 6, atoi(argv[2]), 1); G.dirty = true; return true; }
     if (!strcmp(name, "sculpt") && argc >= 3) { arc_terrain_sculpt(ter, (float)atof(argv[0]), (float)atof(argv[1]), 10, (float)atof(argv[2])); G.dirty = true; return true; }
     if (!strcmp(name, "regrow")) { regrow(); return true; }
+    if (!strcmp(name, "terrain_colour") && argc >= 1) {   /* 0.10.13 a colour map made here (a game bakes one from its map) */
+        static uint8_t px[64 * 64 * 4];
+        cmap_kind = !strcmp(argv[0], "red") ? 1 : !strcmp(argv[0], "map") ? 2 : 0;
+        for (int y = 0; y < 64; y++) for (int x = 0; x < 64; x++) {
+            static const uint32_t fields[4] = { 0xE0D070, 0x70B050, 0xC09060, 0x90C0E0 };
+            uint32_t c = cmap_kind == 1 ? 0xFF2020 : fields[((x / 16) + (y / 16) * 3) % 4]; uint8_t *q = &px[(y * 64 + x) * 4];
+            q[0] = (uint8_t)(c >> 16); q[1] = (uint8_t)(c >> 8); q[2] = (uint8_t)c; q[3] = 255;
+        }
+        if (cmap_tex.id) arc_texture_destroy(cmap_tex);
+        cmap_tex.id = 0; if (cmap_kind) cmap_tex = arc_texture_create_ex(64, 64, px, ARC_TEX_SMOOTH);
+        arc_terrain_set_color_map(ter, cmap_tex);   /* copied: cmap_tex could be freed now */
+        return true;
+    }
     return false;
 }
 arc_app arc_main(int argc, char **argv) {

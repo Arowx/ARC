@@ -68,6 +68,8 @@ case "$target" in
             python3 tools/arc_check.py tests/check_request.md --exe build/check_game_headless > build/check.txt || { cat build/check.txt; exit 1; }; tail -1 build/check.txt   # 0.9.0 acceptance checks + the frame command
             ${CC:-cc} $CFLAGS -D_GNU_SOURCE -DARC_HEADLESS_ONLY samples/board/board.c src/arc.c -o build/board_headless -lm   # 0.9.9 ground markers and arc_board
             python3 tools/arc_check.py tests/board_check.md --exe build/board_headless > build/board_check.txt || { cat build/board_check.txt; exit 1; }; tail -1 build/board_check.txt
+            ${CC:-cc} $CFLAGS -D_GNU_SOURCE -DARC_HEADLESS_ONLY samples/terrain/terrain.c src/arc.c -o build/terrain_headless -lm   # 0.10.13 terrain colour map
+            python3 tools/arc_check.py tests/terrain_colour_check.md --exe build/terrain_headless > build/terrain_colour_check.txt || { cat build/terrain_colour_check.txt; exit 1; }; tail -1 build/terrain_colour_check.txt
             ${CC:-cc} $CFLAGS -D_GNU_SOURCE -DARC_HEADLESS_ONLY samples/action/action.c src/arc.c -o build/action_headless -lm   # 0.10.0 brains, senses, shots, camera rigs
             python3 tools/arc_check.py tests/action_check.md --exe build/action_headless > build/action_check.txt || { cat build/action_check.txt; exit 1; }; tail -1 build/action_check.txt
             ${CC:-cc} $CFLAGS -D_GNU_SOURCE -DARC_HEADLESS_ONLY tests/review_game.c src/arc.c -o build/review_headless -lm   # 0.10.1 review sheets, UI layout
@@ -82,7 +84,8 @@ case "$target" in
             ${CC:-cc} $CFLAGS -D_GNU_SOURCE -DARC_HEADLESS_ONLY tests/split_game.c src/arc.c -o build/split_headless -lm   # 0.10.2 split-screen viewports
             python3 tools/arc_check.py tests/split_check.md --exe build/split_headless > build/split_check.txt || { cat build/split_check.txt; exit 1; }; tail -1 build/split_check.txt
             ${CC:-cc} $CFLAGS -D_GNU_SOURCE -DARC_HEADLESS_ONLY samples/demo/demo.c src/arc.c -o build/demo_headless -lm   # 0.10.11 lines and touch (Vector Trader)
-            for c in line touch nan text save_path command_clash; do python3 tools/arc_check.py tests/${c}_check.md --exe build/demo_headless > build/${c}_check.txt || { cat build/${c}_check.txt; exit 1; }; tail -1 build/${c}_check.txt; done
+            python3 tools/arc_request.py tests/offset2d_check.md --game test --dry-run > /dev/null   # 0.10.13 request tool (no network)
+            for c in line touch nan text save_path command_clash offset2d lines2d music_loop; do python3 tools/arc_check.py tests/${c}_check.md --exe build/demo_headless > build/${c}_check.txt || { cat build/${c}_check.txt; exit 1; }; tail -1 build/${c}_check.txt; done
             python3 tests/line_width_test.py build/demo_headless || exit 1
             python3 tests/touch_replay_test.py build/demo_headless || exit 1
             rc=0; python3 tools/arc_check.py tools/tests/two_blocks.md > build/two_blocks.txt || rc=$?   # 0.10.12: every block runs; one fails on purpose

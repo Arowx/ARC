@@ -1311,6 +1311,9 @@ void arc__net_replay_open(const char *replay_path);
 typedef struct { char **lines; int count, pos; } cmd_queue;
 static cmd_queue g_cmds;
 static bool g_stdin_mode;
+void arc__audio_init(int rate); void arc__audio_mix(float *out, int frames);   /* 0.10.13 --audio-sim */
+extern bool arc__audio_test_mode;
+static bool g_audio_sim; static double g_audio_sim_acc;
 static uint64_t g_wait_until;            /* script is paused until this tick */
 /* 0.10.10: a window build with --stdin reading a pipe (tools/arc_mcp.py) never blocks on it: the window keeps drawing
    and answering the OS while ARC waits for a command, and ticks run only when asked (step / wait, or `live run`) */
@@ -1450,6 +1453,7 @@ static void write_dump(arc_json *j) {
     arc_json_int_k(j, "draw_calls", st.draw_calls); arc_json_int_k(j, "instances", st.instances);
     arc_json_int_k(j, "dropped", st.dropped); arc_json_int_k(j, "dropped_total", arc__gfx_dropped_total());
     arc_json_int_k(j, "triangles", st.triangles); arc_json_num_k(j, "frame_ms", st.frame_ms);
+    arc_json_int_k(j, "vertices_2d", st.vertices_2d); arc_json_int_k(j, "vertices_2d_max", st.vertices_2d_max);   /* 0.10.13 */
     arc_json_num_k(j, "cpu_ms", st.cpu_ms); arc_json_num_k(j, "tick_ms", st.tick_ms);
     { arc_frame_times ft = arc_get_frame_times();
       arc_json_num_k(j, "frame_p50_ms", ft.p50); arc_json_num_k(j, "frame_p95_ms", ft.p95); arc_json_num_k(j, "frame_p99_ms", ft.p99);
@@ -2543,6 +2547,8 @@ int arc__startup(int argc, char **argv, const arc__platform *plat) {
 #endif
 
     arc__msaa = G.app.msaa;
+    if (G.app.max_2d_vertices > 0) arc__max_v2 = G.app.max_2d_vertices;   /* 0.10.13 */
+    if (G.headless && arc_arg_flag("audio-sim")) { g_audio_sim = true; arc__audio_test_mode = true; arc__audio_init(44100); }   /* 0.10.13 */
     if ((v = arc_arg_value("msaa"))) arc__msaa = atoi(v);
     arc__depth_mode = G.app.depth_mode >= ARC_DEPTH_STANDARD && G.app.depth_mode <= ARC_DEPTH_REVERSED_INFINITE ? G.app.depth_mode : ARC_DEPTH_STANDARD;
     if (arc_arg_flag("reversed-z")) arc__depth_mode = ARC_DEPTH_REVERSED;
@@ -2580,6 +2586,14 @@ int arc__startup(int argc, char **argv, const arc__platform *plat) {
 }
 
 /* one tick of game logic (input is already in g_cur) */
+/* 0.10.13 --audio-sim: a headless run mixes its sound into nothing, one tick's worth a tick, so music positions,
+   voices and loop sections advance exactly as when playing (tests of music; otherwise headless runs have no mixer) */
+static void audio_sim_tick(void) {
+    static float scratch[2 * 4096];
+    g_audio_sim_acc += 44100.0 / (double)(G.tick_hz > 0 ? G.tick_hz : 60);
+    int n = (int)g_audio_sim_acc; g_audio_sim_acc -= n;
+    while (n > 0) { int k = n < 4096 ? n : 4096; arc__audio_mix(scratch, k); n -= k; }
+}
 static void sim_tick_body(bool imm) {
     if (imm) arc__frame_alpha = 1.0f;
     arc__ui_tick_begin();
@@ -2593,6 +2607,7 @@ static void sim_tick_body(bool imm) {
     bool hold = arc__editor_tick();                  /* 0.7.2: an open editor pauses the game (and takes the input first) */
     arc__ui_fit_before_tick();    /* 0.10.1: `ui_fit` sizes */
     if (G.app.tick && !hold) { arc__phase = ARC__PHASE_TICK; G.app.tick(); arc__phase = 0; }
+    if (g_audio_sim && !g_resim) audio_sim_tick();   /* 0.10.13 */
     arc__viewport_close();   /* 0.10.2: one left open */
     if (!hold) arc__rig_tick();   /* 0.10.0: the `cam rig` override moves with the ticks */
     arc__ui_fit_after_tick();     /* 0.10.1 */

@@ -2,6 +2,58 @@
 
 Version numbers follow `ARC_VERSION` in `include/arc.h`. Games can check it at compile time.
 
+## Unreleased (0.10.14, in progress): template games with art and juice
+
+- **The shooter template is a finished mini-game: Neon Arena.** It has a rigged robot with idle, run, hit and death
+  clips, drones, armoured beetles that charge (with a warning arrow), a boss every 5th wave, combos, power-ups
+  (spread, rapid, shield), breakable crates, a textured floor and modular walls, Ludo-made sound effects and music,
+  and juice: hit-stop, shake, hit flashes, pop-ins, particles, floating scores, a rolling score counter and bloom.
+  Its acceptance checks have 4 blocks (37 checks). The other five templates follow after review.
+- `tools/new_game.py --template` copies the template's `assets/` folder into the new game.
+- `tools/arc_import.py --texture-size N` shrinks a model's textures (512 suits props: a third of the size).
+
+## 0.10.13 — 21 Nov 2026: glowing 2D lines in bulk, a safe-area offset, music loop sections, a terrain colour map
+
+Self-test 2689 (11 new, `tests/test_v1013.c`). New acceptance checks: `tests/offset2d_check.md`, `lines2d_check.md`,
+`music_loop_check.md` (on the demo) and `terrain_colour_check.md` (on `samples/terrain`). Pictures unchanged. From
+Vector Trader and Grand Token Acquisition.
+
+- **2D drawn inside an offset (Vector Trader):** `arc_push_offset2d(x, y, w, h)` moves everything 2D after it by
+  (x, y) and clips it to w x h there (0 x 0 = no clip; nested ones add up and clip inside each other);
+  `arc_pop_offset2d()` ends it; `arc_offset2d()` reads the total. Wrap a HUD in the safe area with
+  `arc_rectf r = arc_safe_area(); arc_push_offset2d(r.x, r.y, r.w, r.h); ... arc_pop_offset2d();`. Quads, sprites,
+  text, lines, `arc_draw_lines2d` and the `frame` boxes all follow it. The offset is reset each frame, and an
+  `ARC hint` names a push left open.
+- **Glowing 2D lines in bulk (Vector Trader):** `arc_draw_lines2d(pts, count, width, glow, halo_alpha, rgb)` draws
+  `count / 2` segments (point pairs) as one batch: a soft-edged core `width` pixels wide and a halo `glow` widths out
+  on each side, one quad (6 vertices) a segment. 20,000 segments use 120,000 vertices.
+  - The 2D vertex budget is `arc_app.max_2d_vertices` (0 = the old 1,048,576). Going over drops the rest of the frame
+    and prints the budget and that tip once.
+  - `arc_stats()` and the dump's `stats` have `vertices_2d` and `vertices_2d_max`; `frame` has `vertices_2d` and
+    `lines.lines2d`.
+  - `hud off` hides these lines like all other 2D.
+- **Music loop sections (Vector Trader):** `arc_music_set_loop(m, start_s, end_s)` loops a looping track between two
+  times after its first pass (an intro once, then the body). `arc_music_set_loop_fade(m, seconds)` (up to 2 s)
+  crossfades the end into the start with equal-power gains instead of a hard jump. MP3 and QOA, sample-exact.
+  `arc_music_position` stays inside the section. (0, 0) loops the whole file again.
+- **`--audio-sim`:** headless runs normally have no mixer. With this flag the mixer runs at the tick rate, so
+  music positions, loops and fades can be checked with no sound card (`args --audio-sim` in an arc-check block).
+- **Terrain colour map (GTA):**
+  - `arc_terrain_desc.color_map` and `arc_terrain_set_color_map(t, tex)` take a picture that spans the whole
+    terrain. It is multiplied into the splatted ground (white changes nothing), and the four layers add texture
+    detail on top. It is copied when given, so call it again after changing the picture.
+  - It uses the material's detail layer, in every renderer, at 7 bits a channel. A detail layer in
+    `arc_terrain_desc.material` gives way to it, with an `ARC hint`; clearing the map gives the detail back.
+  - `arc_terrain_set_splat(t, rgba)` writes the whole splat map, the texture and the CPU copy, so
+    `arc_terrain_layer_weight`, `arc_terrain_paint` and scatter agree with it. `arc_terrain_splat_res(t)` gives its
+    side in pixels.
+  - `samples/terrain` has a `terrain_colour red|map|off` command.
+- **Requests as GitHub issues:** `tools/arc_request.py request.md --game NAME` files a request as an issue on the ARC
+  repository, labelled `request`, so requests can be picked up while the PC that wrote them is off. `--list` shows
+  the open ones. It uses `gh api` (REST); if GitHub can't be reached it saves the request in `incoming/`, as before.
+  `docs/REQUESTS.md` and AGENTS.md describe it. `build test` runs a `--dry-run`.
+- Feature macros: `ARC_HAS_OFFSET2D`, `ARC_HAS_LINES2D`, `ARC_HAS_MUSIC_LOOP`, `ARC_HAS_TERRAIN_COLOR_MAP` (1013).
+
 ## 0.10.12 — 21 Nov 2026: NaN-safe post effects, crisp built-in text, every arc-check block, panel positions
 
 Self-test 2678 (15 new). New acceptance checks on the demo: `tests/nan_check.md`, `text_check.md`,

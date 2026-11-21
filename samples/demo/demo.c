@@ -31,6 +31,10 @@ static float v_speed, v_enemy_speed, v_fire_rate, v_bullet_speed, v_spawn_rate;
 static float v_line_test;   /* 0.10.11: 1 draws a few thick, glowing vector lines over the arena */
 static float v_nan_test;    /* 0.10.12: 1 turns bloom on and draws a cube whose glow is NaN (post effects must not spread it) */
 static float v_text_test, v_save_test;   /* 0.10.12: a centred DOCK button label; save once to --save-dir */
+static float v_offset2d_test;   /* 0.10.13: a panel and a label laid out from (0, 0) inside the safe area */
+static float v_lines2d_test;    /* 0.10.13: that many glowing 2D segments in one arc_draw_lines2d call */
+static float v_music_loop_test; /* 0.10.13: play tests/loop_test.qoa (8 s, a step up in pitch each second) looping 2..6 s */
+static arc_music g_loop_music;
 
 static void reset(void) {
     for (int i = 0; i < G.enemies.cap; i++) if (arc_pool_alive(&G.enemies, i)) arc_pool_remove(&G.enemies, arc_pool_handle_at(&G.enemies, i));
@@ -65,6 +69,9 @@ static void init(void) {
     arc_var("nan_test", &v_nan_test, 0.0f);
     arc_var("text_test", &v_text_test, 0.0f);
     arc_var("save_test", &v_save_test, 0.0f);
+    arc_var("offset2d_test", &v_offset2d_test, 0.0f);
+    arc_var("lines2d_test", &v_lines2d_test, 0.0f);
+    arc_var("music_loop_test", &v_music_loop_test, 0.0f);
     arc_pool_make(&G.enemies, arc_perm(), enemy, MAX_ENEMIES);
     arc_pool_make(&G.bullets, arc_perm(), bullet, MAX_BULLETS);
     arc_pool_make(&G.particles, arc_perm(), particle, MAX_PARTICLES);
@@ -84,6 +91,11 @@ static void init(void) {
 }
 
 static void tick(void) {
+    if (v_music_loop_test > 0.5f && !g_loop_music.id) {   /* 0.10.13 (a test: loaded once, when the tunable is set) */
+        const char *paths[] = { "loop_test.qoa", "../tests/loop_test.qoa", "../../tests/loop_test.qoa" };
+        for (int i = 0; i < 3 && !g_loop_music.id; i++) if (arc_file_exists(paths[i])) g_loop_music = arc_music_load(paths[i]);
+        if (g_loop_music.id) { arc_music_set_loop(g_loop_music, 2.0f, 6.0f); arc_music_play(g_loop_music, true); }
+    }
     if (v_save_test > 0.5f && !G.saved) { int v = 42; G.saved = arc_save("demo_test", &v, sizeof v); }   /* 0.10.12 */
     float dt = arc_dt();
     if (G.bench) { G.bench_t += dt; return; }
@@ -238,6 +250,24 @@ static void draw(float alpha) {
         arc_set_line_width(1.0f); arc_set_line_glow(1.0f); arc_set_line_cap(ARC_LINE_CAP_SQUARE);
         arc_draw_line2d(20, 60, 300, 90, 5.0f, 0x40FFC0);
     }
+    if (v_lines2d_test >= 1.0f) {   /* 0.10.13: a star of glowing vector segments (frame arena: no allocation) */
+        int n = (int)v_lines2d_test; arc_v2 *pts = (arc_v2 *)arc_arena_alloc(arc_frame(), sizeof(arc_v2) * (size_t)n * 2, 8);
+        if (pts) {
+            float cx = (float)arc_width() * 0.5f, cy = (float)arc_height() * 0.5f;
+            for (int i = 0; i < n; i++) {
+                float a = (float)i * 2.39996f, r0 = 20.0f + (float)(i % 37) * 4.0f, r1 = r0 + 30.0f;
+                pts[i * 2] = arc_v2_make(cx + cosf(a) * r0, cy + sinf(a) * r0); pts[i * 2 + 1] = arc_v2_make(cx + cosf(a) * r1, cy + sinf(a) * r1);
+            }
+            arc_draw_lines2d(pts, n * 2, 2.0f, 2.0f, 0.5f, 0x40FFC0);
+        }
+    }
+    if (v_offset2d_test > 0.5f) {   /* 0.10.13: drawn from (0, 0); the offset puts it inside the notch and bars */
+        arc_rectf sa = arc_safe_area();
+        arc_push_offset2d(sa.x, sa.y, sa.w, sa.h);
+        arc_draw_rect(0, 0, 200, 40, 0x203050);
+        arc_draw_text(8, 16, 1, 0xFFFFFF, "SAFE");
+        arc_pop_offset2d();
+    }
     if (v_text_test > 0.5f) {   /* 0.10.12: a 63-pixel button at x = 384.5 with its label centred at the largest size that fits */
         float bx = 384.5f, by = 300, bw = 63, bh = 28;
         arc_draw_rect(bx, by, bw, bh, 0x203040);
@@ -263,6 +293,8 @@ static void dump(arc_json *j) {
     arc_json_int_k(j, "lives", G.lives); arc_json_int_k(j, "score", G.score); arc_json_int_k(j, "wave", G.wave);
     arc_json_bool_k(j, "dead", G.dead);
     arc_json_int_k(j, "demo_setting", G.demo_setting); arc_json_bool_k(j, "saved", G.saved);
+    arc_json_num_k(j, "music_position", g_loop_music.id ? arc_music_position(g_loop_music) : -1.0f); arc_json_bool_k(j, "music_playing", arc_music_playing(g_loop_music));
+    { arc_gfx_stats st = arc_stats(); arc_json_obj_k(j, "stats"); arc_json_int_k(j, "vertices_2d", st.vertices_2d); arc_json_end(j); }   /* 0.10.13 */
     arc_json_int_k(j, "enemies", G.enemies.count); arc_json_int_k(j, "bullets", G.bullets.count); arc_json_int_k(j, "particles", G.particles.count);
     arc_json_arr_k(j, "nearest_enemies");
     for (int n = 0, i = 0; i < G.enemies.cap && n < 8; i++) {

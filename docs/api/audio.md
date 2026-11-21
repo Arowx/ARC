@@ -104,6 +104,17 @@ ARC_API bool arc_music_playing(arc_music m);
 ARC_API float arc_music_length(arc_music m);    // seconds
 ```
 
+0.10.13 a loop section: when the track loops it goes back to start_s and plays to end_s (seconds; 0 = the file's end),
+   seamlessly; the first play still starts at 0, so an intro plays once. arc_music_set_loop(m, 0, 0) loops the whole
+   file again. MP3s are decoded to start_s once, when this is called. arc_music_set_loop_fade: a crossfade of that many
+   seconds (0..2) into the loop point, for sections that don't quite line up (0.08 is a good start): the jump then
+   happens fade seconds before end_s while the end fades out over it. arc_music_position reads the place in the file.
+
+```c
+ARC_API void arc_music_set_loop(arc_music m, float start_s, float end_s);
+ARC_API void arc_music_set_loop_fade(arc_music m, float seconds);
+```
+
 Variety and limits. A sound can vary each time it plays: pitch by up to +-semitones and volume down by up to
    volume_range (0.2 = 80..100%), drawn from the audio system's own generator (arc_audio_seed), never arc_rand_*, so
    the game's random stream is untouched. Limits: at most max_voices of a sound (or on a bus) at once; a play over

@@ -21,6 +21,10 @@ enum { SL_BG = 0, SL_PRE = 1, SL_FAST = 2, SL_PAINT = 3, SL_POST = 4, SL_XRAY = 
 enum { LIM_VERTS2D, LIM_BATCH2D, LIM_INSTANCES, LIM_IMM, LIM_LINES, LIM_BONES, LIM_PASSES, LIM_COUNT };
 static int g_dropped, g_dropped_total;
 static int g_plain_first = -1, g_plain_n;   /* see plain_fixup */
+/* 0.10.12+1 (0.10.13) 2D offsets (Vector Trader): the vertices of the last 2D allocation are moved by the offset in
+   force when they were reserved, at the next reservation or the frame's end (like plain_fixup) */
+static struct { float x, y; bool clip; int cx, cy, cw, ch; } g_off_stack[8]; static int g_off_n;
+static float g_off_x, g_off_y; static int g_offfix_first = -1, g_offfix_n; static float g_offfix_x, g_offfix_y;
 /* 0.7.1 scene speed-ups (arc_scene.c, included after this file): the cell meshes are tagged with, this frame's counts,
    and the camera version (bumped by arc_set_camera) that cached visibility is checked against */
 int arc__draw_cell;
@@ -28,8 +32,8 @@ static int g_culled, g_lod_n[4], g_static_draws; static uint32_t g_cam_version =
 static bool scene_cell_drawable(int cell);
 static uint32_t scene_lod_pick(uint32_t mesh, const float *model);
 static void scene_lod_forget(uint32_t mesh);
-static int g_lines_thick; static float g_lines_wmax, g_lines_gmax;
-bool arc__post_nan; int arc__post_nan_count;   /* 0.10.12 (see arc_internal.h) */   /* 0.10.11 this frame's thick lines, widest, brightest */
+static int g_lines_thick, g_lines2d_frame; static float g_lines_wmax, g_lines_gmax;
+bool arc__post_nan; int arc__post_nan_count; int arc__max_v2 = ARC__MAX_VERTS2D;   /* 0.10.12 (see arc_internal.h) */   /* 0.10.11 this frame's thick lines, widest, brightest */
 static bool g_lod_any;   /* some mesh has LODs */
 static void over_limit(int which) {
     static bool told[LIM_COUNT];
@@ -44,8 +48,9 @@ static void over_limit(int which) {
     g_dropped++; g_dropped_total++;
     if (told[which]) return;
     told[which] = true;
-    printf("ARC error draw limit: more than %d %s in one frame; later ones are dropped (counted in stats.dropped).%s\n",
-           L[which].max, L[which].what, L[which].tip);
+    printf("ARC error draw limit: more than %d %s in one frame; later ones are dropped (counted in stats.dropped).%s%s\n",
+           which == LIM_VERTS2D ? arc__max_v2 : L[which].max, L[which].what, L[which].tip,
+           which == LIM_VERTS2D ? " arc_app.max_2d_vertices raises it; stats.vertices_2d shows how much a frame uses" : "");
     fflush(stdout);
 }
 int arc__gfx_dropped_total(void) { return g_dropped_total; }
@@ -363,7 +368,8 @@ bool arc__gfx_init(const arc__backend *backend, int w, int h) {
     R.mesh_counts = (int *)arc__xalloc(sizeof(int) * ARC__MAX_MESHES * 2);
     R.imm = (arc_vertex *)arc__xalloc(sizeof(arc_vertex) * ARC__MAX_IMM);
     R.lines = (arc__line_vertex *)arc__xalloc(sizeof(arc__line_vertex) * ARC__MAX_LINES * 2);
-    R.v2 = (arc__vert2d *)arc__xalloc(sizeof(arc__vert2d) * ARC__MAX_VERTS2D);
+    if (arc__max_v2 < 65536) arc__max_v2 = ARC__MAX_VERTS2D;   /* 0.10.13 arc_app.max_2d_vertices */
+    R.v2 = (arc__vert2d *)arc__xalloc(sizeof(arc__vert2d) * (size_t)arc__max_v2);
     R.b2 = (arc__batch2d *)arc__xalloc(sizeof(arc__batch2d) * ARC__MAX_BATCHES);
     uint8_t white[4] = { 255, 255, 255, 255 };
     tex_create_id(TEX_WHITE, 1, 1, white, ARC_TEX_REPEAT);
@@ -1756,8 +1762,10 @@ uint64_t arc__gfx_frame;   /* frames begun: caches use it to avoid freeing what 
 void arc__gfx_begin(void) {
     g_last_valid = false; arc__bill_frame(); arc__gfx_frame++;
     R.raw_count = R.line_count = R.v2_count = R.b2_count = R.imm_count = R.pass_count = R.bone_count = R.lt_count = 0; R.ltri_count = 0; arc__post_nan_count = 0;
-    g_lines_thick = 0; g_lines_wmax = 0; g_lines_gmax = 0; R.lt_ntiles = 0; R.lt_nidx = 0; R.lsh_count = 0;
-    g_plain_first = -1; g_plain_n = 0;
+    g_lines_thick = 0; g_lines_wmax = 0; g_lines_gmax = 0; g_lines2d_frame = 0; R.lt_ntiles = 0; R.lt_nidx = 0; R.lsh_count = 0;
+    g_plain_first = -1; g_plain_n = 0; g_offfix_first = -1; g_offfix_n = 0;
+    if (g_off_n) { arc__hint("offset2d-open", "arc_push_offset2d was not popped by the end of the frame: the offset is reset each frame"); g_off_n = 0; }
+    g_off_x = g_off_y = 0;
     R.line_push = 0; R.npats = 0; R.sdf2d = 0;
     arc__draw_cell = 0; g_culled = g_static_draws = 0; memset(g_lod_n, 0, sizeof g_lod_n);
     R.target_depth = 0; R.target_stack[0] = 0; R.blend = ARC__BLEND_ALPHA; R.clip = false;
@@ -2201,14 +2209,39 @@ void arc__review_state(bool on) {
 static void plain_fixup(void) {
     for (int i = 0; i < g_plain_n; i++) { R.v2[g_plain_first + i].u = ARC__UV_PLAIN; R.v2[g_plain_first + i].v = 0; }
     g_plain_first = -1; g_plain_n = 0;
+    for (int i = 0; i < g_offfix_n; i++) { R.v2[g_offfix_first + i].x += g_offfix_x; R.v2[g_offfix_first + i].y += g_offfix_y; }   /* 0.10.13 */
+    g_offfix_first = -1; g_offfix_n = 0;
 }
+void arc_push_offset2d(float x, float y, float w, float h) {
+    plain_fixup();
+    if (g_off_n >= 8) { arc__hint("offset2d-deep", "arc_push_offset2d nested more than 8 deep: the extra push is ignored (pop as often as you push)"); g_off_n++; return; }
+    g_off_stack[g_off_n].x = g_off_x; g_off_stack[g_off_n].y = g_off_y; g_off_stack[g_off_n].clip = R.clip;
+    g_off_stack[g_off_n].cx = R.cx; g_off_stack[g_off_n].cy = R.cy; g_off_stack[g_off_n].cw = R.cw; g_off_stack[g_off_n].ch = R.ch;
+    g_off_n++;
+    float nx = g_off_x + x, ny = g_off_y + y;
+    if (w > 0 && h > 0) {   /* clip to the new area, inside any clip already set */
+        int x0 = (int)floorf(nx), y0 = (int)floorf(ny), x1 = (int)ceilf(nx + w), y1 = (int)ceilf(ny + h);
+        if (R.clip) { x0 = arc_maxi(x0, R.cx); y0 = arc_maxi(y0, R.cy); x1 = arc_mini(x1, R.cx + R.cw); y1 = arc_mini(y1, R.cy + R.ch); }
+        R.clip = true; R.cx = x0; R.cy = y0; R.cw = arc_maxi(0, x1 - x0); R.ch = arc_maxi(0, y1 - y0);
+    }
+    g_off_x = nx; g_off_y = ny;
+}
+void arc_pop_offset2d(void) {
+    plain_fixup();
+    if (g_off_n <= 0) { arc__hint("offset2d-pop", "arc_pop_offset2d without a matching arc_push_offset2d"); return; }
+    g_off_n--;
+    if (g_off_n >= 8) return;
+    g_off_x = g_off_stack[g_off_n].x; g_off_y = g_off_stack[g_off_n].y; R.clip = g_off_stack[g_off_n].clip;
+    R.cx = g_off_stack[g_off_n].cx; R.cy = g_off_stack[g_off_n].cy; R.cw = g_off_stack[g_off_n].cw; R.ch = g_off_stack[g_off_n].ch;
+}
+arc_v2 arc_offset2d(void) { return arc_v2_make(g_off_x, g_off_y); }
 /* reserve n vertices in the right batch; NULL when full. A new batch starts when the texture, blend or clip changes,
    except that plain triangles join any batch, and a batch of only plain ones takes the next texture (0.6.5) */
 static arc__vert2d *v2_alloc(uint32_t tex, int n) {
     if (!R.in_frame) { arc__hint("draw2d-outside", "2D (text, rects, sprites) was drawn outside draw(): nothing shows. Draw in draw() or draw_top(), or set arc_app.immediate."); return NULL; }
     if (g_hud_hidden && R.target_depth == (R.vp_cur >= 0 ? 1 : 0) && !g_vp_compositing) return NULL;
     plain_fixup();
-    if (R.v2_count + n > ARC__MAX_VERTS2D) { over_limit(LIM_VERTS2D); return NULL; }
+    if (R.v2_count + n > arc__max_v2) { over_limit(LIM_VERTS2D); return NULL; }
     if (!tex) tex = TEX_WHITE;
     bool plain = tex == TEX_WHITE;
     arc__pass *p = cur_pass();
@@ -2225,6 +2258,7 @@ static arc__vert2d *v2_alloc(uint32_t tex, int n) {
     if (!plain) b->plain = 0;
     b->count += n;
     if (plain) { g_plain_first = R.v2_count; g_plain_n = n; }
+    if (g_off_x != 0 || g_off_y != 0) { g_offfix_first = R.v2_count; g_offfix_n = n; g_offfix_x = g_off_x; g_offfix_y = g_off_y; }
     arc__vert2d *v = &R.v2[R.v2_count]; R.v2_count += n; return v;
 }
 static void quad(uint32_t tex, float x0, float y0, float x1, float y1, float x2, float y2, float x3, float y3,
@@ -2294,6 +2328,7 @@ static void fr_text(float x, float y, float w, float h, uint32_t rgb, const char
     size_t n = strlen(s); if (n > 400) n = 400;
     if (g_fr.nchars + (int)n + 1 > (int)sizeof g_fr.chars) return;
     if (R.vp_cur >= 0 && R.target_depth == 1) { x += (float)R.vps[R.vp_cur].x; y += (float)R.vps[R.vp_cur].y; }   /* 0.10.2: window pixels */
+    x += g_off_x; y += g_off_y;   /* 0.10.13 */
     frec_text *t = &g_fr.t[g_fr.nt++]; t->x = x; t->y = y; t->w = w; t->h = h; t->rgb = rgb; t->off = g_fr.nchars; t->tgt = arc__frame_target(); t->scale = g_fr_scale;
     memcpy(g_fr.chars + g_fr.nchars, s, n); g_fr.chars[g_fr.nchars + n] = 0; g_fr.nchars += (int)n + 1;
 }
@@ -2301,6 +2336,7 @@ static void fr_quad(bool sprite, float x, float y, float w, float h, uint32_t rg
     if (!g_fr.on || g_fr.depth) return;
     frec_quad *q = sprite ? (g_fr.ns < 256 ? &g_fr.sp[g_fr.ns++] : NULL) : (g_fr.nr < 256 ? &g_fr.rc[g_fr.nr++] : NULL);
     if (q && R.vp_cur >= 0 && R.target_depth == 1) { x += (float)R.vps[R.vp_cur].x; y += (float)R.vps[R.vp_cur].y; }
+    x += g_off_x; y += g_off_y;   /* 0.10.13 */
     if (q) { q->x = x; q->y = y; q->w = w; q->h = h; q->rgb = rgb; q->tex = tex; q->tgt = arc__frame_target(); }
 }
 /* 0.10.7: arc_draw_texture_ex is listed in frame.sprites; a render target's placement is kept (fr_blit) */
@@ -2351,6 +2387,49 @@ void arc_draw_line2d(float x0, float y0, float x1, float y1, float t, uint32_t c
         v[i].x = X[e] + ux * sh[i].along + vx * sh[i].across; v[i].y = Y[e] + uy * sh[i].along + vy * sh[i].across;
         v[i].u = 0.5f; v[i].v = 0.5f;
         v[i].color = (col & 0x00FFFFFFu) | ((uint32_t)(((col >> 24) * sh[i].a + 127) / 255) << 24);
+    }
+}
+/* 0.10.13 (Vector Trader) glowing 2D lines in one quad each: a 64 x 256 profile texture (u across the quad, rows by
+   the core's share of the width and the halo's strength, 16 x 16) holds a solid core with a one-texel soft edge and a
+   halo fading to 0, so a core and its glow cost 6 vertices instead of two quads' 12 */
+#define LP_W 64
+#define LP_ROWS 256
+static uint32_t g_lp_tex;
+static uint32_t lines2d_profile(void) {
+    if (g_lp_tex && tex_ok((arc_texture){ g_lp_tex })) return g_lp_tex;
+    uint8_t *px = (uint8_t *)arc__xalloc(LP_W * LP_ROWS * 4);
+    for (int r = 0; r < LP_ROWS; r++) {
+        float core = (float)(r % 16 + 1) / 16.0f, halo = (float)(r / 16) / 15.0f;   /* core share 1/16..1, halo 0..1 */
+        for (int x = 0; x < LP_W; x++) {
+            float d = fabsf(((float)x + 0.5f) / (float)LP_W * 2.0f - 1.0f);           /* 0 at the middle, 1 at the edge */
+            float edge = 1.5f / (float)LP_W * 2.0f;                                     /* the core's soft edge */
+            float a = d <= core - edge ? 1.0f : d < core ? (core - d) / edge : 0.0f;
+            if (core < 1.0f && d >= core - edge) { float t = arc_clampf((d - core) / (1.0f - core), 0.0f, 1.0f); float h = halo * (1.0f - t) * (1.0f - t); if (h > a) a = h; }
+            uint8_t *o = px + ((size_t)r * LP_W + (size_t)x) * 4; o[0] = o[1] = o[2] = 255; o[3] = (uint8_t)(arc_clampf(a, 0, 1) * 255.0f + 0.5f);
+        }
+    }
+    g_lp_tex = arc_texture_create(LP_W, LP_ROWS, px, true).id; free(px);
+    return g_lp_tex;
+}
+void arc_draw_lines2d(const arc_v2 *pts, int count, float width, float glow, float halo_alpha, uint32_t rgb) {
+    if (!pts || count < 2 || width <= 0) return;
+    if (glow < 0) glow = 0;
+    float total = width * (1.0f + 2.0f * glow) + 2.0f;   /* +1 pixel each side for the soft edge */
+    int ci = arc_clampi((int)(width / total * 16.0f + 0.5f) - 1, 0, 15), hi = arc_clampi((int)(arc_clampf(halo_alpha, 0, 1) * 15.0f + 0.5f), 0, 15);
+    if (glow <= 0) hi = 0;
+    float v = ((float)(hi * 16 + ci) + 0.5f) / (float)LP_ROWS, half = total * 0.5f;
+    uint32_t tex = lines2d_profile(), col = arc__to_abgr(rgb);
+    int segs = count / 2;
+    g_lines2d_frame += segs;
+    arc__vert2d *o = v2_alloc(tex, segs * 6); if (!o) return;
+    int n = 0;
+    for (int i = 0; i + 1 < count; i += 2) {
+        float x0 = pts[i].x, y0 = pts[i].y, x1 = pts[i + 1].x, y1 = pts[i + 1].y, dx = x1 - x0, dy = y1 - y0, l = sqrtf(dx * dx + dy * dy);
+        if (l < 1e-6f) { dx = 1; dy = 0; l = 1; }
+        float nx = -dy / l * half, ny = dx / l * half, ex = dx / l * width * 0.5f, ey = dy / l * width * 0.5f;   /* ends reach half the core past each point */
+        float X[4] = { x0 - ex + nx, x1 + ex + nx, x1 + ex - nx, x0 - ex - nx }, Y[4] = { y0 - ey + ny, y1 + ey + ny, y1 + ey - ny, y0 - ey - ny }, U[4] = { 0, 0, 1, 1 };
+        static const int idx[6] = { 0, 1, 2, 0, 2, 3 };
+        for (int k = 0; k < 6; k++) { arc__vert2d *q = &o[n++]; q->x = X[idx[k]]; q->y = Y[idx[k]]; q->u = U[idx[k]]; q->v = v; q->color = col; }
     }
 }
 void arc_draw_sprite(arc_texture t, float x, float y, float w, float h, float u0, float v0, float u1, float v1, uint32_t tint) {
@@ -2846,6 +2925,7 @@ static void gfx_end_mode(int mode) {
     R.stats.draw_calls = nb + R.b2_count + (R.imm_count ? 1 : 0) + (R.line_count ? 1 : 0) + (R.ltri_count ? 1 : 0);
     R.stats.instances = R.raw_count; R.stats.triangles = tris + R.v2_count / 3;
     R.stats.lines = R.line_count / 2 + g_lines_thick; R.stats.quads = R.v2_count / 6; R.stats.passes = passes_drawn;
+    R.stats.vertices_2d = R.v2_count; R.stats.vertices_2d_max = arc__max_v2;   /* 0.10.13 */
     R.stats.dropped = g_dropped; g_dropped = 0;
     R.stats.culled = g_culled; memcpy(R.stats.lod_instances, g_lod_n, sizeof g_lod_n); R.stats.static_draws = g_static_draws;
     for (int i = 0; i < R.pending_shot_count; i++) { bool ok = arc_screenshot(R.pending_shots[i]); printf(ok ? "ARC ok shot %s\n" : "ARC error shot %s\n", R.pending_shots[i]); }
@@ -2859,6 +2939,7 @@ void arc__stats_frame_ms(float ms, float cpu) {
 }
 arc_gfx_stats arc_stats(void) {
     arc_gfx_stats st = R.stats; st.textures = st.textures_compressed = 0; st.texture_bytes = 0;
+    st.vertices_2d_max = arc__max_v2;   /* 0.10.13 (known before the first frame too) */
     for (int i = 1; i < ARC__MAX_TEXTURES; i++) {
         const arc__tex_rec *t = &arc__textures[i]; if (!t->used) continue;
         st.textures++; st.textures_compressed += t->fmt != ARC_TEXFMT_RGBA8;
@@ -3226,8 +3307,10 @@ void arc__frame_json(arc_json *j) {
         arc_json_num_k(j, "count", thin + g_lines_thick); arc_json_num_k(j, "thick", g_lines_thick);
         arc_json_num_k(j, "width_max", g_lines_wmax > 0 ? g_lines_wmax : (thin ? 1.0f : 0.0f)); arc_json_num_k(j, "glow_max", g_lines_gmax);
         arc_json_num_k(j, "triangles", tv / 3);
+        arc_json_num_k(j, "lines2d", g_lines2d_frame);   /* 0.10.13 arc_draw_lines2d segments */
         arc_json_end(j);
         arc_json_num_k(j, "dropped", R.stats.dropped);
+        arc_json_num_k(j, "vertices_2d", R.stats.vertices_2d); arc_json_num_k(j, "vertices_2d_max", arc__max_v2);
     }
     {   /* 0.10.12 post: non-finite scene pixels (the software renderer counts them; on a GPU, with `post nan on`, the
            magenta pixels of the last frame) */

@@ -47,11 +47,11 @@ arc_app arc_main(int argc, char **argv) {
 - [Skeletal animation](api/graphics-animation.md) - 48 names
 - [Particles, trails, decals and stamps](api/graphics-effects.md) - 30 names
 - [Immediate geometry, quick shapes and 3D lines](api/graphics-shapes.md) - 16 names
-- [2D drawing: rects, sprites, nine-slice, blend, clip](api/graphics-2d.md) - 15 names
+- [2D drawing: rects, sprites, nine-slice, blend, clip](api/graphics-2d.md) - 19 names
 - [Text: built-in font, baked fonts, rich text](api/graphics-text.md) - 36 names
 - [Render targets, screenshots and frame timing](api/graphics-targets.md) - 26 names
 - [Scene speed-ups: cells, portals, LOD, static batches](api/graphics-scene.md) - 32 names
-- [Audio: synth effects, sound files, streamed music, 32-voice mixer](api/audio.md) - 73 names
+- [Audio: synth effects, sound files, streamed music, 32-voice mixer](api/audio.md) - 75 names
 - [Turns and grids (time-unit scheduler, tile grid, line of sight, paths)](api/turns-and-grids.md) - 39 names
 - [UI: immediate-mode widgets (menus, settings, debug panels)](api/ui.md) - 44 names
 - [UX: easing, screen transitions, captions, colour blindness, localisation](api/ux.md) - 42 names
@@ -59,7 +59,7 @@ arc_app arc_main(int argc, char **argv) {
 - [Physics (0.9.4): deterministic rigid bodies](api/physics.md) - 53 names
 - [Navigation (0.9.2): navmeshes, paths, agents that follow them](api/navigation.md) - 28 names
 - [Action (0.10.0): AI brains, senses, shots, camera rigs](api/action.md) - 80 names
-- [Terrain (0.9.6): height grids, splatted ground, scattered props](api/terrain.md) - 33 names
+- [Terrain (0.9.6): height grids, splatted ground, scattered props](api/terrain.md) - 36 names
 - [Profiling](api/profiling.md) - 3 names
 - [Files](api/files.md) - 5 names
 - [Loading in the background (0.7.1)](api/loading-in-the-background.md) - 21 names
@@ -520,12 +520,16 @@ arc_app arc_main(int argc, char **argv) {
 
 - `arc_draw_rect` - 2D overlay in screen pixels (origin top-left), drawn after 3D in call order.
 - `arc_draw_rect_lines`
-- `arc_draw_line2d` - 1.5 px and wider: soft edges (0.10.11)
+- `arc_draw_line2d`
+- `arc_draw_lines2d` - 1.5 px and wider: soft edges (0.10.11)
 - `arc_draw_nine` - Nine-slice: the texture's corners (src_border texels square) drawn dst_border pixels squa…
 - `arc_draw_sprite`
 - `arc_blend` _(type)_ - ---- 2D extras: blend modes, clipping, triangles, rotated sprites ----
 - `arc_set_blend` - applies to following 2D draws; ALPHA by default each frame
 - `arc_get_blend`
+- `arc_push_offset2d` - 2D offsets (0.10.13): 2D drawn after arc_push_offset2d(x, y, w, h) is moved by (x, y) pix…
+- `arc_pop_offset2d`
+- `arc_offset2d`
 - `arc_set_clip` - cut off 2D draws outside this rect (pixels of the current target)
 - `arc_clear_clip`
 - `arc_vertex2d` _(type)_ - color 0xAARRGGBB, alpha 0 = opaque (see arc_rgba)
@@ -688,6 +692,8 @@ arc_app arc_main(int argc, char **argv) {
 - `arc_music_set_volume`
 - `arc_music_playing`
 - `arc_music_length` - seconds
+- `arc_music_set_loop` - 0.10.13 a loop section: when the track loops it goes back to start_s and plays to end_s (…
+- `arc_music_set_loop_fade`
 - `arc_steal` _(type)_ - Variety and limits.
 - `arc_sound_set_variation`
 - `arc_sound_set_limit` - 0 = no limit
@@ -1043,6 +1049,9 @@ arc_app arc_main(int argc, char **argv) {
 - `arc_terrain_layer_weight`
 - `arc_terrain_triangles` - full-detail triangles in world space, 3 points each: fills up to `max` points and returns…
 - `arc_terrain_splat_map` - RGBA = layer weights (for a minimap)
+- `arc_terrain_set_color_map` - copied now: call again after changing tex; {0} = none
+- `arc_terrain_set_splat` - splat_res * splat_res RGBA weights, rows along +x from origin
+- `arc_terrain_splat_res` - the splat map's side in pixels
 - `arc_scatter` _(type)_
 - `arc_scatter_desc` _(type)_
 - `arc_scatter_create`
