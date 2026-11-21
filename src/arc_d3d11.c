@@ -88,7 +88,9 @@ static const char *HLSL =
     "  return acc;\n"
     "}\n"
     "float3 env_col(float t) { return lerp(envh.rgb, t >= 0.0 ? envt.rgb : envb.rgb, min(abs(t), 1.0)); }\n"
-    "cbuffer PP : register(b1) { float4 pa, pb; column_major float4x4 sivp; float4 stop, shor, sbot, pc; float4 pd, pe, pres; column_major float4x4 aivp, avp; float4 ass; };\n"
+    "cbuffer PP : register(b1) { float4 pa, pb; column_major float4x4 sivp; float4 stop, shor, sbot, pc; float4 pd, pe, pres; column_major float4x4 aivp, avp; float4 ass, pf; };\n"   /* pf.x (0.10.12): post nan on */
+    "bool badf(float x) { return (asuint(x) & 0x7F800000u) == 0x7F800000u; }\n"   /* 0.10.12: NaN or Inf (bit test) */
+    "float3 fin(float3 c) { return float3(badf(c.r) ? 0.0 : max(c.r, 0.0), badf(c.g) ? 0.0 : max(c.g, 0.0), badf(c.b) ? 0.0 : max(c.b, 0.0)); }\n"
     "#ifdef ARC_MS\n"
     "Texture2DMS<float> dms : register(t8);\n"
     "#endif\n"
@@ -158,7 +160,7 @@ static const char *HLSL =
     "}\n"
     "float fog_f(float d) { float f = 0.0; if (fog.z > 0.0) { if (fog.w > 0.0) { float k = fog.w * d; f = 1.0 - exp(-k * k); } else f = saturate((d - fog.x) * fog.y); } return f; }\n"
     "uint hx_h(int x, int y) { uint h = ((uint)x * 73856093u) ^ ((uint)y * 19349663u); h = h ^ (h >> 13); h = h * 0x5bd1e995u; h = h ^ (h >> 15); return h; }\n"
-    "float hx_gain(float x, float k) { float s = 0.5 * pow(2.0 * (x < 0.5 ? x : 1.0 - x), k); return x < 0.5 ? s : 1.0 - s; }\n"
+    "float hx_gain(float x, float k) { x = saturate(x); float s = 0.5 * pow(max(2.0 * (x < 0.5 ? x : 1.0 - x), 0.0), k); return x < 0.5 ? s : 1.0 - s; }\n"   /* 0.10.12: a weight of 1.0000001 made pow's base negative: NaN */
     "float4 hex_cell(Texture2D t, SamplerState sm, float2 st, float2 gx, float2 gy, int2 v, float rot) {\n"   /* one cell's turned, offset sample */
     "  const float S3 = 3.4641016; uint h = hx_h(v.x, v.y), h2 = hx_h(v.x + 31, v.y + 17);\n"
     "  float2 c = float2((float)v.x + (float)v.y * 0.5, (float)v.y * 0.8660254) / S3;\n"
@@ -318,8 +320,8 @@ static const char *HLSL =
     "  return float4(lerp(shor.rgb, t >= 0.0 ? stop.rgb : sbot.rgb, min(abs(t), 1.0)), 1.0);\n"
     "}\n"
     "float4 ps_down(VP i) : SV_Target {\n"   /* pa.xy source texel, pa.z threshold (< 0: none) */
-    "  float3 c = (tex0.Sample(smp0, i.uv + float2(-pa.x, -pa.y)).rgb + tex0.Sample(smp0, i.uv + float2(pa.x, -pa.y)).rgb\n"
-    "            + tex0.Sample(smp0, i.uv + float2(-pa.x, pa.y)).rgb + tex0.Sample(smp0, i.uv + pa.xy).rgb) * 0.25;\n"
+    "  float3 c = (fin(tex0.Sample(smp0, i.uv + float2(-pa.x, -pa.y)).rgb) + fin(tex0.Sample(smp0, i.uv + float2(pa.x, -pa.y)).rgb)\n"
+    "            + fin(tex0.Sample(smp0, i.uv + float2(-pa.x, pa.y)).rgb) + fin(tex0.Sample(smp0, i.uv + pa.xy).rgb)) * 0.25;\n"
     "  if (pa.z >= 0.0) { float l = dot(c, float3(0.2126, 0.7152, 0.0722)); c = min(c * (l > 1e-4 ? max(l - pa.z, 0.0) / l : 0.0), 64.0); }\n"
     "  return float4(c, 1.0);\n"
     "}\n"
@@ -372,7 +374,7 @@ static const char *HLSL =
     /* composite: pa bloom, exposure, tonemap, desaturate; pb contrast, vignette, aspect, scanline period; pc tilt, focus, width, 1/levels;
        pd ssao, fxaa, crt, pixelate; pe aberration, scanlines, lut strength (0 = none), lut size; pres w, h, 1/w, 1/h.
        ntex (t5) = the AO buffer, otex (t6) = the LUT here */
-    "float3 S(float2 q) { return tex0.SampleLevel(smp0, q, 0).rgb; }\n"   /* no gradients: fxaa samples inside a loop */
+    "float3 S(float2 q) { return fin(tex0.SampleLevel(smp0, q, 0).rgb); }\n"   /* no gradients: fxaa samples inside a loop */
     "float luma(float3 c) { return sqrt(dot(saturate(c), float3(0.299, 0.587, 0.114))); }\n"
     "float FL(float2 p) { return luma(S(p)); }\n"
     "float3 fxaa(float2 tc) {\n"
@@ -413,6 +415,7 @@ static const char *HLSL =
     "  return lerp(otex.Sample(smp0, float2((b0 * n + x) / (n * n), y)).rgb, otex.Sample(smp0, float2((b1 * n + x) / (n * n), y)).rgb, f);\n"
     "}\n"
     "float4 ps_comp(VP i) : SV_Target {\n"
+    "  if (pf.x > 0.5) { float3 r = tex0.SampleLevel(smp0, i.uv, 0).rgb; if (badf(r.r) || badf(r.g) || badf(r.b)) return float4(1, 0, 1, 1); }\n"   /* post nan on */
     "  float2 uv = i.uv, q = uv;\n"
     "  if (pd.z > 0.0) {\n"
     "    float2 d = q - 0.5; q = 0.5 + d * (1.0 + 0.25 * pd.z * dot(2.0 * d, 2.0 * d));\n"
@@ -715,7 +718,7 @@ static bool d3d_init(void) {
     D.cb = make_buffer(sizeof(d3d_cb), D3D11_BIND_CONSTANT_BUFFER, 1, NULL);
     D.cb_mat = make_buffer(768, D3D11_BIND_CONSTANT_BUFFER, 1, NULL);   /* (0.9.9: m11; 0.10.1: pat, pjm) */
     D.cb_quad = make_buffer(16, D3D11_BIND_CONSTANT_BUFFER, 1, NULL); D.quad_sdf = -1;
-    D.cb_post = make_buffer(352, D3D11_BIND_CONSTANT_BUFFER, 1, NULL);
+    D.cb_post = make_buffer(368, D3D11_BIND_CONSTANT_BUFFER, 1, NULL);
     D3D11_RASTERIZER_DESC rd = { 0 }; rd.FillMode = D3D11_FILL_SOLID; rd.CullMode = D3D11_CULL_BACK; rd.FrontCounterClockwise = TRUE; rd.DepthClipEnable = TRUE; rd.ScissorEnable = TRUE;
     rd.MultisampleEnable = D.msaa ? TRUE : FALSE;
     ID3D11Device_CreateRasterizerState(D.dev, &rd, &D.rs_cull); rd.FrontCounterClockwise = FALSE; ID3D11Device_CreateRasterizerState(D.dev, &rd, &D.rs_cull_cw);
@@ -1172,11 +1175,12 @@ static d3d_pset *d3d_pset_for(uint32_t id, bool make) {
     return NULL;
 }
 static float g_post_pc[4];   /* tilt-shift: strength, focus, width */
-static float g_post_x[48];   /* the rest of cbuffer PP from pd: pd, pe, pres, aivp, avp, ass */
+static float g_post_x[52];   /* the rest of cbuffer PP from pd: pd, pe, pres, aivp, avp, ass, pf */
 static void d3d_post_cb(const float a[4], const float b[4]) {
     D3D11_MAPPED_SUBRESOURCE m;
     if (SUCCEEDED(ID3D11DeviceContext_Map(D.ctx, (ID3D11Resource *)D.cb_post, 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
         memset(m.pData, 0, 160); memcpy(m.pData, a, 16); memcpy((uint8_t *)m.pData + 16, b, 16); memcpy((uint8_t *)m.pData + 144, g_post_pc, 16);
+        g_post_x[48] = arc__post_nan ? 1.0f : 0.0f;
         memcpy((uint8_t *)m.pData + 160, g_post_x, sizeof g_post_x);
         ID3D11DeviceContext_Unmap(D.ctx, (ID3D11Resource *)D.cb_post, 0);
     }

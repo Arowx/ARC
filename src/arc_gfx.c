@@ -28,7 +28,8 @@ static int g_culled, g_lod_n[4], g_static_draws; static uint32_t g_cam_version =
 static bool scene_cell_drawable(int cell);
 static uint32_t scene_lod_pick(uint32_t mesh, const float *model);
 static void scene_lod_forget(uint32_t mesh);
-static int g_lines_thick; static float g_lines_wmax, g_lines_gmax;   /* 0.10.11 this frame's thick lines, widest, brightest */
+static int g_lines_thick; static float g_lines_wmax, g_lines_gmax;
+bool arc__post_nan; int arc__post_nan_count;   /* 0.10.12 (see arc_internal.h) */   /* 0.10.11 this frame's thick lines, widest, brightest */
 static bool g_lod_any;   /* some mesh has LODs */
 static void over_limit(int which) {
     static bool told[LIM_COUNT];
@@ -1754,7 +1755,7 @@ void arc__bill_frame(void);
 uint64_t arc__gfx_frame;   /* frames begun: caches use it to avoid freeing what this frame already drew with */
 void arc__gfx_begin(void) {
     g_last_valid = false; arc__bill_frame(); arc__gfx_frame++;
-    R.raw_count = R.line_count = R.v2_count = R.b2_count = R.imm_count = R.pass_count = R.bone_count = R.lt_count = 0; R.ltri_count = 0;
+    R.raw_count = R.line_count = R.v2_count = R.b2_count = R.imm_count = R.pass_count = R.bone_count = R.lt_count = 0; R.ltri_count = 0; arc__post_nan_count = 0;
     g_lines_thick = 0; g_lines_wmax = 0; g_lines_gmax = 0; R.lt_ntiles = 0; R.lt_nidx = 0; R.lsh_count = 0;
     g_plain_first = -1; g_plain_n = 0;
     R.line_push = 0; R.npats = 0; R.sdf2d = 0;
@@ -2252,7 +2253,7 @@ void arc_draw_texture_ex(arc_texture t, float sx, float sy, float sw, float sh, 
 }
 
 /* ---- 0.9.0 frame description: 2D recorded while on (the `frame` command turns it on for one render) ---- */
-typedef struct { float x, y, w, h; uint32_t rgb; int off; uint32_t tgt; } frec_text;
+typedef struct { float x, y, w, h; uint32_t rgb; int off; uint32_t tgt; float scale; } frec_text;
 typedef struct { float x, y, w, h; uint32_t rgb, tex, tgt; } frec_quad;
 /* 0.10.7 (Moonbase Raid): a render target drawn somewhere (the screen or another target): its source rectangle in the
    target's pixels and where that lands, so things drawn into the target can be placed on the screen */
@@ -2287,12 +2288,13 @@ void arc__frame_record(bool on) { g_fr.on = on; g_fr.depth = 0; g_fr.nt = g_fr.n
 /* 0.10.9 (Moonbase Raid) immediate mode: every tick's frame is recorded while it is drawn (arc__frame_record(true)
    before the tick), then kept, recording off (this), so `frame` describes the frame it shows without drawing again */
 void arc__frame_keep(void) { g_fr.on = false; g_fr.depth = 0; }
+static float g_fr_scale;   /* 0.10.12 the scale of the text being recorded (0: not known) */
 static void fr_text(float x, float y, float w, float h, uint32_t rgb, const char *s) {
     if (!g_fr.on || g_fr.depth || !s || !*s || g_fr.nt >= 512) return;
     size_t n = strlen(s); if (n > 400) n = 400;
     if (g_fr.nchars + (int)n + 1 > (int)sizeof g_fr.chars) return;
     if (R.vp_cur >= 0 && R.target_depth == 1) { x += (float)R.vps[R.vp_cur].x; y += (float)R.vps[R.vp_cur].y; }   /* 0.10.2: window pixels */
-    frec_text *t = &g_fr.t[g_fr.nt++]; t->x = x; t->y = y; t->w = w; t->h = h; t->rgb = rgb; t->off = g_fr.nchars; t->tgt = arc__frame_target();
+    frec_text *t = &g_fr.t[g_fr.nt++]; t->x = x; t->y = y; t->w = w; t->h = h; t->rgb = rgb; t->off = g_fr.nchars; t->tgt = arc__frame_target(); t->scale = g_fr_scale;
     memcpy(g_fr.chars + g_fr.nchars, s, n); g_fr.chars[g_fr.nchars + n] = 0; g_fr.nchars += (int)n + 1;
 }
 static void fr_quad(bool sprite, float x, float y, float w, float h, uint32_t rgb, uint32_t tex) {
@@ -2359,8 +2361,23 @@ void arc_draw_sprite(arc_texture t, float x, float y, float w, float h, float u0
     }
     quad(t.id ? t.id : TEX_WHITE, x, y, x + w, y, x + w, y + h, x, y + h, u0, v0, u1, v1, tint);
 }
+/* 0.10.12 (Vector Trader): the built-in 8x8 font drops whole rows and columns below scale 1 and on half pixels
+   ("DOCK" read "DUCK"). It now lands on whole pixels, and arc_text_fit_scale picks whole sizes. At 1 and above, nearest
+   sampling keeps every row whatever the size, so sizes stay as given (layouts made with them still fit);
+   arc_text_snap_builtin(ARC_TEXT_SNAP_SIZES) rounds them to whole numbers too (widths and heights agree). ARC_TEXT_EXACT: as given. */
+static int g_text_snap8 = 1;
+static bool g_text_exact;   /* (one draw with ARC_TEXT_EXACT) */
+void arc_text_snap_builtin(int mode) { g_text_snap8 = arc_clampi(mode, 0, 2); }
+static float text_scale(float s) { return !g_text_exact && g_text_snap8 == 2 && s >= 1.0f ? floorf(s + 0.5f) : s; }
+static float text_pos(float v) { return g_text_exact || g_text_snap8 == 0 ? v : floorf(v + 0.5f); }
+static float text_draw_raw(float x, float y, float scale, uint32_t rgb, const char *text);
 float arc_draw_text(float x, float y, float scale, uint32_t rgb, const char *text) {
-    if (g_fr.on && !g_fr.depth && text) fr_text(x, y, arc_text_width(scale, text), arc_text_height(scale, text), rgb, text);
+    if (!text) return 0;
+    scale = text_scale(scale); x = text_pos(x); y = text_pos(y);
+    if (g_fr.on && !g_fr.depth) { g_fr_scale = scale; fr_text(x, y, arc_text_width(scale, text), arc_text_height(scale, text), rgb, text); g_fr_scale = 0; }
+    return text_draw_raw(x, y, scale, rgb, text);
+}
+static float text_draw_raw(float x, float y, float scale, uint32_t rgb, const char *text) {
     if (scale > 0 && scale < 0.95f && text && *text)   /* 0.9.8 (Moonbase): the 8 px built-in font below 8 px loses rows */
         arc__hint("text_small_builtin", "text at %.1f px with the built-in 8 px font loses rows and can look blank on the software renderer: draw it at scale 1 or more, or bake a font at that size (tools/font_bake.py) and use arc_font_draw", 8.0f * scale);
     float cx = x, cy = y, s = 8.0f * scale, maxw = 0;
@@ -2379,12 +2396,14 @@ float arc_draw_text(float x, float y, float scale, uint32_t rgb, const char *tex
     return arc_maxf(maxw, cx - x);
 }
 float arc_text_height(float scale, const char *text) {
+    scale = text_scale(scale);
     int lines = 1; for (const char *p = text; *p; p++) if (*p == '\n') lines++;
     return 8.0f * scale + ((float)(lines - 1)) * 8.0f * scale * 1.25f;
 }
 float arc_text_fit_scale(const char *text, float max_width, float max_scale) {
     float w = arc_text_width(1.0f, text);
-    return w > 0 && max_width > 0 ? arc_minf(max_scale, max_width / w) : max_scale;
+    float f = w > 0 && max_width > 0 ? arc_minf(max_scale, max_width / w) : max_scale;
+    return g_text_snap8 != 0 && f >= 1.0f ? floorf(f + 1e-4f) : f;   /* 0.10.12: a whole size, the largest that fits */
 }
 static void text_anchor(float *x, float *y, float w, float h, int flags) {
     if (flags & ARC_TEXT_CENTER) *x -= w * 0.5f; else if (flags & ARC_TEXT_RIGHT) *x -= w;
@@ -2393,17 +2412,22 @@ static void text_anchor(float *x, float *y, float w, float h, int flags) {
 static uint32_t text_dark(uint32_t rgb) { uint32_t a = rgb >> 24; float al = a ? (float)a / 255.0f : 1.0f; return arc_rgba(0x000000, 0.7f * al); }
 float arc_draw_text_ex(float x, float y, float scale, uint32_t rgb, int flags, const char *text) {
     if (flags & ARC_TEXT_RICH) { arc_font none = { 0 }; return arc_rich_draw(none, x, y, scale, rgb, flags, text); }
+    bool keep = g_text_exact; if (flags & ARC_TEXT_EXACT) g_text_exact = true;
+    scale = text_scale(scale);
     float w = arc_text_width(scale, text), h = arc_text_height(scale, text), o = arc_maxf(1.0f, scale);
     text_anchor(&x, &y, w, h, flags);
-    fr_text(x, y, w, h, rgb, text); g_fr.depth++;
+    x = text_pos(x); y = text_pos(y);
+    g_fr_scale = scale; fr_text(x, y, w, h, rgb, text); g_fr_scale = 0; g_fr.depth++;
     uint32_t d = text_dark(rgb);
     if (flags & ARC_TEXT_OUTLINE) for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) if (i || j) arc_draw_text(x + (float)i * o, y + (float)j * o, scale, d, text);
     if (flags & ARC_TEXT_SHADOW) arc_draw_text(x + o, y + o, scale, d, text);
     arc_draw_text(x, y, scale, rgb, text);
     g_fr.depth--;
+    g_text_exact = keep;
     return w;
 }
 float arc_text_width(float scale, const char *text) {
+    scale = text_scale(scale);
     float w = 0, best = 0;
     for (const char *p = text; *p; p++) { if (*p == '\n') { best = arc_maxf(best, w); w = 0; } else w += 8.0f * scale; }
     return arc_maxf(best, w);
@@ -3205,6 +3229,15 @@ void arc__frame_json(arc_json *j) {
         arc_json_end(j);
         arc_json_num_k(j, "dropped", R.stats.dropped);
     }
+    {   /* 0.10.12 post: non-finite scene pixels (the software renderer counts them; on a GPU, with `post nan on`, the
+           magenta pixels of the last frame) */
+        int nan_px = arc__post_nan_count;
+        if (arc__post_nan && arc__gfx && strcmp(arc__gfx->name, "soft")) {
+            int w = 0, h = 0; uint8_t *px = arc__gfx_read_frame(&w, &h); nan_px = 0;
+            if (px) { for (size_t k = 0; k < (size_t)w * (size_t)h; k++) { const uint8_t *q = px + k * 4; nan_px += q[0] > 200 && q[1] < 60 && q[2] > 200; } free(px); }
+        }
+        arc_json_obj_k(j, "post"); arc_json_bool_k(j, "nan_mode", arc__post_nan); arc_json_int_k(j, "nan_pixels", nan_px); arc_json_end(j);
+    }
     if (P) {
         arc_json_obj_k(j, "camera");
         arc_json_arr_k(j, "eye"); arc_json_num(j, P->eye.x); arc_json_num(j, P->eye.y); arc_json_num(j, P->eye.z); arc_json_end(j);
@@ -3360,6 +3393,7 @@ void arc__frame_json(arc_json *j) {
         float bx[4] = { t->x, t->y, t->x + t->w, t->y + t->h }, tb[4] = { t->x, t->y, t->x + t->w, t->y + t->h }; uint32_t to = t->tgt ? fr_map(t->tgt, bx) : 0;
         arc_json_arr_k(j, "box"); arc_json_num(j, (int)bx[0]); arc_json_num(j, (int)bx[1]); arc_json_num(j, (int)(bx[2] + 0.5f)); arc_json_num(j, (int)(bx[3] + 0.5f)); arc_json_end(j);
         if (t->tgt) fr_json_target(j, -1, t->tgt, to, tb);
+        if (t->scale > 0) arc_json_num_k(j, "scale", t->scale);
         arc_json_str_k(j, "rgb", hx); arc_json_end(j);
     }
     arc_json_end(j);
@@ -3381,6 +3415,7 @@ void arc__frame_json(arc_json *j) {
         arc_json_end(j);
     }
     arc__ui_json(j, "ui");
+    arc__ui_panels_json(j);   /* 0.10.12 */
     arc_json_end(j);
 }
 void arc_texture_set_name(arc_texture t, const char *name) { if (tex_ok(t)) { size_t n = name ? strlen(name) : 0; if (n > 31) n = 31; memcpy(g_tname[t.id], name ? name : "", n); g_tname[t.id][n] = 0; } }

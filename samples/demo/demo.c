@@ -24,10 +24,13 @@ static struct {
     arc_sound s_shoot, s_boom, s_hit;
     int cam_mode; bool god;
     int bench; float bench_t;
+    int demo_setting; bool saved;   /* 0.10.12: `set demo_setting N` (a game command named like ARC's), save_test */
 } G;
 
 static float v_speed, v_enemy_speed, v_fire_rate, v_bullet_speed, v_spawn_rate;
 static float v_line_test;   /* 0.10.11: 1 draws a few thick, glowing vector lines over the arena */
+static float v_nan_test;    /* 0.10.12: 1 turns bloom on and draws a cube whose glow is NaN (post effects must not spread it) */
+static float v_text_test, v_save_test;   /* 0.10.12: a centred DOCK button label; save once to --save-dir */
 
 static void reset(void) {
     for (int i = 0; i < G.enemies.cap; i++) if (arc_pool_alive(&G.enemies, i)) arc_pool_remove(&G.enemies, arc_pool_handle_at(&G.enemies, i));
@@ -59,6 +62,9 @@ static void init(void) {
     arc_var("bullet.speed", &v_bullet_speed, 30.0f);
     arc_var("spawn.rate", &v_spawn_rate, 6.0f);
     arc_var("line_test", &v_line_test, 0.0f);
+    arc_var("nan_test", &v_nan_test, 0.0f);
+    arc_var("text_test", &v_text_test, 0.0f);
+    arc_var("save_test", &v_save_test, 0.0f);
     arc_pool_make(&G.enemies, arc_perm(), enemy, MAX_ENEMIES);
     arc_pool_make(&G.bullets, arc_perm(), bullet, MAX_BULLETS);
     arc_pool_make(&G.particles, arc_perm(), particle, MAX_PARTICLES);
@@ -78,6 +84,7 @@ static void init(void) {
 }
 
 static void tick(void) {
+    if (v_save_test > 0.5f && !G.saved) { int v = 42; G.saved = arc_save("demo_test", &v, sizeof v); }   /* 0.10.12 */
     float dt = arc_dt();
     if (G.bench) { G.bench_t += dt; return; }
     if (arc_key_pressed(ARC_KEY_C)) G.cam_mode ^= 1;
@@ -218,6 +225,11 @@ static void draw(float alpha) {
         float s = q->size * arc_clampf(q->life * 2, 0, 1);
         arc_draw_mesh_ex(G.shard, arc_m4_trs_y(q->pos, q->life * 8, arc_v3_make(s, s, s)), q->color, 0.8f);
     }
+    if (v_nan_test > 0.5f) {   /* 0.10.12: one bad pixel source; with the guard it stays a dark patch, not a glowing blotch */
+        static bool posted; if (!posted) { posted = true; arc_set_post(&(arc_post){ .bloom = 0.6f, .bloom_threshold = 1.0f, .exposure = 1.0f }); }
+        volatile float zero = 0.0f;
+        arc_draw_mesh_ex(G.shard, arc_m4_trs_y(arc_v3_make(p.x + 3, 1, p.z), 0, arc_v3_make(2, 2, 2)), 0xFFFFFF, zero / zero);
+    }
     if (v_line_test > 0.5f) {   /* 0.10.11: a vector-style wireframe, 4 pixels wide, glowing */
         static const arc_v3 ship[] = { { 0, 0, -1.5f }, { 1, 0, 1 }, { 1, 0, 1 }, { 0, 0, 0.5f }, { 0, 0, 0.5f }, { -1, 0, 1 }, { -1, 0, 1 }, { 0, 0, -1.5f } };
         arc_set_line_width(4.0f); arc_set_line_glow(2.5f); arc_set_line_cap(ARC_LINE_CAP_ROUND);
@@ -225,6 +237,11 @@ static void draw(float alpha) {
         arc_draw_line(arc_v3_make(p.x - 8, 0.2f, p.z - 3), arc_v3_make(p.x + 8, 0.2f, p.z - 3), 0xFF60C0);
         arc_set_line_width(1.0f); arc_set_line_glow(1.0f); arc_set_line_cap(ARC_LINE_CAP_SQUARE);
         arc_draw_line2d(20, 60, 300, 90, 5.0f, 0x40FFC0);
+    }
+    if (v_text_test > 0.5f) {   /* 0.10.12: a 63-pixel button at x = 384.5 with its label centred at the largest size that fits */
+        float bx = 384.5f, by = 300, bw = 63, bh = 28;
+        arc_draw_rect(bx, by, bw, bh, 0x203040);
+        arc_draw_text_ex(bx + bw * 0.5f, by + bh * 0.5f, arc_text_fit_scale("DOCK", bw - 4, 3), 0xFFFFFF, ARC_TEXT_CENTER | ARC_TEXT_MIDDLE, "DOCK");
     }
     /* HUD */
     arc_gfx_stats st = arc_stats();
@@ -245,6 +262,7 @@ static void dump(arc_json *j) {
     arc_json_num_k(j, "player_yaw", G.yaw);
     arc_json_int_k(j, "lives", G.lives); arc_json_int_k(j, "score", G.score); arc_json_int_k(j, "wave", G.wave);
     arc_json_bool_k(j, "dead", G.dead);
+    arc_json_int_k(j, "demo_setting", G.demo_setting); arc_json_bool_k(j, "saved", G.saved);
     arc_json_int_k(j, "enemies", G.enemies.count); arc_json_int_k(j, "bullets", G.bullets.count); arc_json_int_k(j, "particles", G.particles.count);
     arc_json_arr_k(j, "nearest_enemies");
     for (int n = 0, i = 0; i < G.enemies.cap && n < 8; i++) {
@@ -275,6 +293,7 @@ static bool command(const char *name, int argc, const char **argv) {
     if (!strcmp(name, "spawn")) { int n = argc ? atoi(argv[0]) : 1; while (n-- > 0) spawn_enemy(); return true; }
     if (!strcmp(name, "god")) { G.god = argc ? atoi(argv[0]) != 0 : !G.god; return true; }
     if (!strcmp(name, "reset")) { reset(); return true; }
+    if (!strcmp(name, "set") && argc >= 2 && !strcmp(argv[0], "demo_setting")) { G.demo_setting = atoi(argv[1]); return true; }   /* 0.10.12: shadowed by ARC's set */
     return false;
 }
 

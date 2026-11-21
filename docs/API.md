@@ -1310,7 +1310,17 @@ Aligned and decorated text (built-in font). (x, y) is the anchor the flags descr
    ARC_TEXT_RICH (0.7) reads markup (see arc_rich_draw); arc_font_draw_aligned takes the same flags.
 
 ```c
-enum { ARC_TEXT_CENTER = 1, ARC_TEXT_RIGHT = 2, ARC_TEXT_MIDDLE = 4, ARC_TEXT_BOTTOM = 8, ARC_TEXT_SHADOW = 16, ARC_TEXT_OUTLINE = 32, ARC_TEXT_RICH = 64 };
+enum { ARC_TEXT_CENTER = 1, ARC_TEXT_RIGHT = 2, ARC_TEXT_MIDDLE = 4, ARC_TEXT_BOTTOM = 8, ARC_TEXT_SHADOW = 16, ARC_TEXT_OUTLINE = 32, ARC_TEXT_RICH = 64, ARC_TEXT_EXACT = 128 };
+```
+
+0.10.12: the built-in 8x8 font drops rows below scale 1 and on half pixels ("DOCK" read "DUCK"). It is drawn on whole
+   pixels (after alignment), and arc_text_fit_scale returns whole sizes from 1 up. arc_text_snap_builtin: ARC_TEXT_SNAP_PIXELS
+   (the default), ARC_TEXT_SNAP_SIZES (sizes of 1 and more rounded to whole numbers as well; arc_text_width / _height
+   agree), ARC_TEXT_SNAP_OFF (as given, the old behaviour). ARC_TEXT_EXACT for one draw. Baked fonts are unchanged.
+
+```c
+enum { ARC_TEXT_SNAP_OFF = 0, ARC_TEXT_SNAP_PIXELS = 1, ARC_TEXT_SNAP_SIZES = 2 };
+ARC_API void arc_text_snap_builtin(int mode);
 ARC_API float arc_draw_text_ex(float x, float y, float scale, uint32_t rgb, int flags, const char *text);
 ARC_API float arc_text_height(float scale, const char *text);
 ```
@@ -1899,6 +1909,19 @@ Call these from tick(): a click changes state on the tick it happens, so replays
 
 ```c
 ARC_API void arc_ui_begin(const char *title, float x, float y, float width);    // a panel; "" = no title bar; drag the title to move it
+```
+
+0.10.12 panel positions (MechBattleArc): a panel's title bar can be dragged, and ARC keeps the move as an offset
+   from where arc_ui_begin puts it, by title ("##" ids count). arc_ui_panel_offset reads it (false: never shown or set),
+   arc_ui_set_panel_offset gives it back (before the panel is first shown is fine; 0, 0 resets it), so a game can save
+   it with its settings. arc_ui_panel_rect: the panel's rectangle last tick in window pixels, after the drag (its real
+   height, for placing it). Dragged panels always keep their title bar inside the window and the safe area, while
+   dragging and when the window shrinks. frame.ui_panels lists title, rect and offset.
+
+```c
+ARC_API bool arc_ui_panel_offset(const char *title, float *dx, float *dy);
+ARC_API void arc_ui_set_panel_offset(const char *title, float dx, float dy);
+ARC_API bool arc_ui_panel_rect(const char *title, float *x, float *y, float *w, float *h);
 ARC_API void arc_ui_end(void);
 ARC_API void arc_ui_columns(int n);    // the next widgets sit n to a row (1 = back to one per row)
 ARC_API void arc_ui_label(const char *text);

@@ -19,6 +19,19 @@ Call these from tick(): a click changes state on the tick it happens, so replays
 
 ```c
 ARC_API void arc_ui_begin(const char *title, float x, float y, float width);    // a panel; "" = no title bar; drag the title to move it
+```
+
+0.10.12 panel positions (MechBattleArc): a panel's title bar can be dragged, and ARC keeps the move as an offset
+   from where arc_ui_begin puts it, by title ("##" ids count). arc_ui_panel_offset reads it (false: never shown or set),
+   arc_ui_set_panel_offset gives it back (before the panel is first shown is fine; 0, 0 resets it), so a game can save
+   it with its settings. arc_ui_panel_rect: the panel's rectangle last tick in window pixels, after the drag (its real
+   height, for placing it). Dragged panels always keep their title bar inside the window and the safe area, while
+   dragging and when the window shrinks. frame.ui_panels lists title, rect and offset.
+
+```c
+ARC_API bool arc_ui_panel_offset(const char *title, float *dx, float *dy);
+ARC_API void arc_ui_set_panel_offset(const char *title, float dx, float dy);
+ARC_API bool arc_ui_panel_rect(const char *title, float *x, float *y, float *w, float *h);
 ARC_API void arc_ui_end(void);
 ARC_API void arc_ui_columns(int n);    // the next widgets sit n to a row (1 = back to one per row)
 ARC_API void arc_ui_label(const char *text);

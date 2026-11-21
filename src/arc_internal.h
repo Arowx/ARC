@@ -457,7 +457,9 @@ bool arc__level_hot_reload(uint32_t id, const char *path);
 size_t arc__level_object_line(const arc_level *l, int layer, int i, char *out, size_t cap);
 int arc__level_object_insert_line(arc_level *l, int layer, int at, const char *line);
 void arc__editor_level_reloaded(arc_level *l);
-int arc__hint_count(const char *key);   /* 0.10.9: times a hint was asked for (printed once) */
+int arc__hint_count(const char *key);
+extern bool arc__post_nan;           /* 0.10.12 `post nan on`: non-finite scene pixels show magenta before the post chain */
+extern int  arc__post_nan_count;     /* non-finite scene pixels the software renderer found this frame */   /* 0.10.9: times a hint was asked for (printed once) */
 void arc__frame_keep(void);   /* 0.10.9: the recording kept (immediate mode), not added to */
 uint32_t arc__frame_target(void);   /* 0.10.7: the render target 2D and markers go into now, for `frame` (0 = screen or viewport) */
 void arc__frame_target_name(uint32_t id, char *out, size_t n);   /* its name, or "#id" */   /* 0.10.6: the ARC_PART_* a joint name paints as */
@@ -543,6 +545,7 @@ void arc__ui_tick_begin(void);
 void arc__ui_tick_end(void);
 void arc__ui_render(void);
 void arc__ui_print(void);
+void arc__ui_panels_json(arc_json *j);   /* 0.10.12 frame.ui_panels */
 /* 0.9.0 hints: print `ARC hint <text>` once per key (a likely mistake and its fix) */
 enum { ARC__PHASE_INIT = 1, ARC__PHASE_TICK = 2, ARC__PHASE_DRAW = 3 };
 extern int arc__phase;

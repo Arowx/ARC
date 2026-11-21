@@ -655,9 +655,17 @@ bool arc_save(const char *key, const void *data, size_t size) {
     if (g_saves_replay) return true;                       /* a replay never overwrites the player's saves */
     if (G.plat && G.plat->save && !G.headless) return G.plat->save(key, data, size);
     const char *path = arc_fmt("%s/%s", save_dir(), key), *tmp = arc_fmt("%s.tmp", path);
-    if (!arc_file_write(tmp, data, size)) return false;
+    static bool said;   /* (once, until a save works again) */
+    if (!arc_file_write(tmp, data, size)) {   /* 0.10.12: say so (a wrong --save-dir used to fail without a word) */
+        if (said) return false;
+        said = true;
+        printf("ARC error save '%s' failed: cannot write %s (is the save folder %s there and writable? --save-dir)\n", key, tmp, save_dir()); fflush(stdout);
+        return false;
+    }
     remove(path);                                   /* Windows will not rename over a file */
-    return rename(tmp, path) == 0;
+    if (rename(tmp, path) != 0) { printf("ARC error save '%s' failed: cannot rename %s to %s\n", key, tmp, path); fflush(stdout); return false; }
+    said = false;
+    return true;
 }
 static uint8_t *load_real(const char *key, arc_arena *a, size_t *size_out) {
     if (G.plat && G.plat->load && !G.headless) return G.plat->load(key, a, size_out);
@@ -2232,6 +2240,10 @@ static bool run_command(const char *line) {
     }
     if (!strcmp(c, "set") && argc >= 3) {
         bool ok = arc_var_set(argv[1], (float)atof(argv[2]));
+        if (!ok && G.app.command && G.app.command(c, argc - 1, argv + 1)) {   /* 0.10.12: the game's own `set` gets what ARC's can't use */
+            arc__hint("command-clash-set", "command \"set\" is ARC's (tunables: arc_var); the game's `set %s` only runs because no tunable has that name - rename the game's command so it always runs", argv[1]);
+            printf("ARC ok set %s (the game's command)\n", argv[1]); fflush(stdout); return false;
+        }
         printf(ok ? "ARC ok set %s %s\n" : "ARC error no var %s\n", argv[1], argv[2]); fflush(stdout); return false;
     }
     if (!strcmp(c, "get") && argc >= 2) { printf("ARC var %s %g\n", argv[1], arc_var_get(argv[1])); fflush(stdout); return false; }
@@ -2248,6 +2260,11 @@ static bool run_command(const char *line) {
                fb.tick_ms, fb.draw_ms, fb.sort_ms, fb.submit_ms, fb.present_ms, fb.audio_ms, fb.other_ms);
         for (int i = 0; i < fb.zone_count; i++) printf("ARC budget_zone %s %.3f ms (%.0f%%)\n", fb.zone_name[i], fb.zone_ms[i], 100.0f * fb.zone_ms[i] / fb.budget_ms);
         fflush(stdout); return false;
+    }
+    if (!strcmp(c, "post") && argc >= 3 && !strcmp(argv[1], "nan")) {   /* 0.10.12: post nan on|off */
+        arc__post_nan = !strcmp(argv[2], "on");
+        printf("ARC ok post nan %s (non-finite scene pixels %s; frame.post.nan_pixels counts them)\n", arc__post_nan ? "on" : "off", arc__post_nan ? "show magenta" : "show black"); fflush(stdout);
+        return false;
     }
     if (!strcmp(c, "live")) {                        /* 0.10.10: window builds driven through --stdin (tools/arc_mcp.py) */
         const char *a = argc >= 2 ? argv[1] : "info";

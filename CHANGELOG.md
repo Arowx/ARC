@@ -2,6 +2,48 @@
 
 Version numbers follow `ARC_VERSION` in `include/arc.h`. Games can check it at compile time.
 
+## 0.10.12 — 21 Nov 2026: NaN-safe post effects, crisp built-in text, every arc-check block, panel positions
+
+Self-test 2678 (15 new). New acceptance checks on the demo: `tests/nan_check.md`, `text_check.md`,
+`save_path_check.md`, `command_clash_check.md`; `tools/tests/two_blocks.md` (one block fails on purpose). Pictures:
+looks 28, 33, 41, 42 and 59 move built-in text by a fraction of a pixel (new baselines). From Moonbase Raid, Grand
+Token Acquisition, MechBattleArc and Vector Trader.
+
+- **Glowing black spots on GPUs (Moonbase):**
+  - The hex-tiling contrast gain took `pow` of a tiny negative number when a cell weight rounded to 1.0000001. GPUs
+    gave NaN, and bloom spread each one. It is clamped now, in the GL and D3D11 shaders and in the software renderer.
+  - The post chain turns NaN and Inf pixels black, and negatives to 0, wherever it reads the scene: bloom's first pass
+    and the composite (and so FXAA and the rest). The test is on the exponent bits, so no shader compiler can fold it
+    away. One bad pixel then stays one dark pixel.
+  - New command `post nan on|off`: non-finite scene pixels show magenta before the post chain.
+  - `frame.post` has `nan_mode` and `nan_pixels`. The software renderer always counts them; on a GPU they are counted
+    from the magenta pixels while `post nan on` is set.
+  - The demo has a `nan_test` tunable: a cube whose glow is NaN, under bloom.
+- **Crisp built-in text (Vector Trader):**
+  - The 8x8 font is drawn on whole pixels after alignment, so half-pixel centring no longer drops rows.
+  - `arc_text_fit_scale` returns whole sizes from 1 up.
+  - Sizes of 1 and more are otherwise kept: nearest sampling keeps every row there, and layouts made with them still
+    fit. `arc_text_snap_builtin(ARC_TEXT_SNAP_SIZES)` also rounds them, and `ARC_TEXT_SNAP_OFF` gives the old
+    behaviour. `ARC_TEXT_EXACT` turns snapping off for one `arc_draw_text_ex`.
+  - `frame.texts[*].scale` for the built-in font.
+- **`arc_check` runs every block (GTA):**
+  - Each block runs in a fresh process, named by its `##` heading, with a pass/fail line per block and `B/C blocks
+    passed` on the last line; any failure exits 1.
+  - Later blocks reuse the last `game` / `exe` / `args`. `continue` keeps the previous block's game running.
+  - New options `--block N`, `--name TEXT`, `--fail-fast`.
+  - A file with one block prints exactly what it did before.
+- **Check paths (Vector Trader):** relative paths given in `args` to `--save-dir`, `--record`, `--replay`, `--script`,
+  `--editor`, `--dump-at-exit` are read from the check file's folder, not from `build/`. A failed save now prints
+  `ARC error save ... failed: cannot write ...` (once until a save works).
+- **Command clash (Vector Trader):** when ARC's `set` finds no tunable of that name, the game's own `command()` gets the
+  line. If the game handles it, an `ARC hint` says the name clashes, instead of an error.
+- **Panel positions (MechBattleArc):**
+  - `arc_ui_panel_offset(title, &dx, &dy)` reads where the player dragged a panel, and `arc_ui_set_panel_offset` gives
+    it back, so a game can save it with its settings. It works before the panel is first shown; 0, 0 resets it.
+  - `arc_ui_panel_rect(title, ...)` is last tick's rectangle after the drag.
+  - Dragged panels always keep their title bar inside the window and the safe area, while dragging and after a resize.
+  - `frame.ui_panels` lists title, rect and offset.
+
 ## 0.10.11 — 20 Nov 2026: thick, glowing lines and multi-touch
 
 Self-test 2663 (16 new). New acceptance checks `tests/line_check.md` and `tests/touch_check.md` (on the demo), plus
