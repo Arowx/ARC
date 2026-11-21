@@ -11,7 +11,7 @@ game tests/level_game.c
 args --editor level_fixture.arclvl
 do step 2
 expect editor.open == true
-expect editor.file contains "tests/level_fixture.arclvl"
+expect editor.file contains "level_fixture.arclvl"
 expect editor.layer_name == "Engine room"
 expect count(editor.objects[*]) == 2
 expect editor.objects[1].fields.number == "476"
