@@ -358,6 +358,8 @@ def main():
         src = open(os.path.join(TEMPLATES, a.template, 'main.c'), encoding='utf-8').read().replace('{title}', title.replace('"', ''))
         os.makedirs(os.path.join(dest, 'tests'))
         shutil.copy(os.path.join(TEMPLATES, a.template, 'acceptance.md'), os.path.join(dest, 'tests', 'acceptance.md'))
+        tassets = os.path.join(TEMPLATES, a.template, 'assets')   # 0.10.14: templates bring their models, sounds and music
+        if os.path.isdir(tassets): shutil.copytree(tassets, os.path.join(dest, 'assets'), dirs_exist_ok=True)
     else:
         src = open(os.path.join(ARC_ROOT, 'samples', 'hello', 'hello.c'), encoding='utf-8').read()
         src = src.replace('#include "../../include/arc.h"', '#include "arc.h"').replace('"Hello ARC"', '"%s"' % title.replace('"', ''))

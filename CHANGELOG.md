@@ -2,6 +2,16 @@
 
 Version numbers follow `ARC_VERSION` in `include/arc.h`. Games can check it at compile time.
 
+## Unreleased (0.10.14, in progress): template games with art and juice
+
+- **The shooter template is a finished mini-game: Neon Arena.** It has a rigged robot with idle, run, hit and death
+  clips, drones, armoured beetles that charge (with a warning arrow), a boss every 5th wave, combos, power-ups
+  (spread, rapid, shield), breakable crates, a textured floor and modular walls, Ludo-made sound effects and music,
+  and juice: hit-stop, shake, hit flashes, pop-ins, particles, floating scores, a rolling score counter and bloom.
+  Its acceptance checks have 4 blocks (37 checks). The other five templates follow after review.
+- `tools/new_game.py --template` copies the template's `assets/` folder into the new game.
+- `tools/arc_import.py --texture-size N` shrinks a model's textures (512 suits props: a third of the size).
+
 ## 0.10.13 — 21 Nov 2026: glowing 2D lines in bulk, a safe-area offset, music loop sections, a terrain colour map
 
 Self-test 2689 (11 new, `tests/test_v1013.c`). New acceptance checks: `tests/offset2d_check.md`, `lines2d_check.md`,

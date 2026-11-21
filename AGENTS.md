@@ -128,11 +128,13 @@ you found replays headless. `docs/MCP.md` has the details.
 ## Starting a new game from a template (0.9.1)
 
 `python3 <ARC>/tools/new_game.py ../MyGame --template tactics` (or `shooter`, `platformer`, `racer`, `cards`, `deck`;
-`--list-templates`) makes a playable game with no art: the rules in `tick()`, a full `dump()`, debug commands for
+`--list-templates`) makes a playable game: the rules in `tick()`, a full `dump()`, debug commands for
 agents, tunables, `save_state`/`load_state` (so rewind and the timeline work), `tests/acceptance.md` with checks of its
 rules (`python3 <ARC>/tools/arc_check.py tests/acceptance.md`, which builds the game with its own script: `game .`), a
 `release.json`, and notes on its structure at the end of the game's `AGENTS.md`. Grow the game from there and keep the
-acceptance checks passing; add a block for each feature.
+acceptance checks passing; add a block for each feature. 0.10.14: `shooter` is a finished mini-game (Neon Arena) with
+models, animation, sound, music, particles and juice made with Ludo, copied into the game's `assets/`; its `NOTES.md`
+lists how each asset was imported. The other templates still use built-in shapes.
 
 ## Seeing the screen without pictures: `frame` (0.9.0)
 

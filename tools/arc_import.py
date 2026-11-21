@@ -11,7 +11,8 @@ What each kind of file becomes (the folder is under DIR/assets, DIR = --game, de
   .glb .gltf .obj (.fbx etc. with trimesh)  meshes/NAME.arcm  via mesh2arcm.py (--height/--footprint/--yaw/--flat,
                                             0.9.8 --fit X Y Z / --fit-uniform X Y Z / --origin bottom|centre|back pass
                                             through; the final bounds are in the report and --json "bounds"); --anim NAME.glb ... adds an .arca of clips);
-                                            --compress: block-compressed textures inside (texcompress.py --arcm)
+                                            --compress: block-compressed textures inside (texcompress.py --arcm);
+                                            0.10.14 --texture-size N: textures at most N pixels a side (512 for props)
   .png .jpg .jpeg .qoi .tga .bmp .webp      textures/NAME.png (or .jpg kept as is); larger than --max-size are
                                             shrunk; --compress: textures/NAME.arct (BC1/BC3, mipmapped);
                                             --normal: a normal map (BC5 when compressed)
@@ -133,6 +134,7 @@ def main():
     ap.add_argument('--anim', nargs='+', metavar='CLIP')
     ap.add_argument('--compress', action='store_true'); ap.add_argument('--normal', action='store_true')
     ap.add_argument('--max-size', type=int, default=2048)
+    ap.add_argument('--texture-size', type=int, default=0, help='models: shrink their textures to at most this many pixels a side (512 suits small props)')
     ap.add_argument('--music', action='store_true')
     ap.add_argument('--sizes', default='16,32')
     ap.add_argument('--no-preview', action='store_true'); ap.add_argument('--force', action='store_true')
@@ -171,6 +173,7 @@ def main():
             if a.fit: cmd += ['--fit'] + [str(v) for v in a.fit]
             if a.fit_uniform: cmd += ['--fit-uniform'] + [str(v) for v in a.fit_uniform]
             if a.origin: cmd += ['--origin', a.origin]
+            if a.texture_size: cmd += ['--texture-size', str(a.texture_size)]   # 0.10.14
             if a.anim:
                 arca = dest('meshes', name + '.arca'); cmd += ['--anim', arca] + a.anim; r['outputs'].append(arca)
             ok, out = run(cmd, a.dry_run)
