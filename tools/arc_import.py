@@ -21,6 +21,10 @@ What each kind of file becomes (the folder is under DIR/assets, DIR = --game, de
                                             longer than 20 s -> music/, else sfx/
   .ttf .otf                                 fonts/NAME_SIZE.arcf for each of --sizes (default 16,32) via font_bake.py
 
+0.10.14: every import is recorded in DIR/assets/manifest.json (the source file name, the options, the clips and any
+--prompt "how it was made"). `--manifest --sources art/` imports the whole set again from the originals in art/ with
+the options it lists (after changing one, or with fresh art made from the same prompts). --no-manifest skips recording.
+
 Afterwards, every mesh, texture and font is opened in tools/arc_view.c (built once into build/arc_view) and a
 preview picture is written next to the report (DIR/build/import/NAME.png), so you can look at what you imported
 without running the game. --no-preview skips that.
@@ -122,9 +126,75 @@ def preview(asset, out_png):
     return info, None
 
 
+# ---- 0.10.14: assets/manifest.json remembers how every asset was imported (and made), so the whole set can be imported
+# again in one go (new sizes, a fixed facing, fresh art from the same prompts) and a person or agent can see where each
+# file came from. {"version": 1, "assets": {"meshes/beetle.arcm": {"source": "beetle.glb", "options": [...],
+# "anims": ["idle.glb", ...], "prompt": "..."}}}
+def import_options(a):
+    o = []
+    for flag, v in (('--into', a.into), ('--height', a.height), ('--footprint', a.footprint), ('--yaw', a.yaw),
+                    ('--origin', a.origin), ('--texture-size', a.texture_size or None)):
+        if v is not None: o += [flag, ('%g' % v) if isinstance(v, float) else str(v)]
+    for flag, v in (('--fit', a.fit), ('--fit-uniform', a.fit_uniform)):
+        if v: o += [flag] + ['%g' % x for x in v]
+    for flag, v in (('--flat', a.flat), ('--compress', a.compress), ('--normal', a.normal), ('--music', a.music)):
+        if v: o.append(flag)
+    if a.max_size != 2048: o += ['--max-size', str(a.max_size)]
+    if a.sizes != '16,32': o += ['--sizes', a.sizes]
+    return o
+
+
+def manifest_path(game): return os.path.join(game, 'assets', 'manifest.json')
+
+
+def load_manifest(game):
+    try:
+        with open(manifest_path(game), encoding='utf-8') as f: m = json.load(f)
+        if isinstance(m.get('assets'), dict): return m
+    except (OSError, ValueError): pass
+    return {'version': 1, 'assets': {}}
+
+
+def record_manifest(a, game, assets, results):
+    m = load_manifest(game); changed = False
+    for r in results:
+        if 'error' in r or not r['outputs']: continue
+        key = os.path.relpath(r['outputs'][0], assets).replace(os.sep, '/')
+        e = {'source': os.path.basename(r['source']), 'options': import_options(a)}
+        if a.anim: e['anims'] = [os.path.basename(x) for x in a.anim]
+        old = m['assets'].get(key, {})
+        if a.prompt or old.get('prompt'): e['prompt'] = a.prompt or old['prompt']
+        if old != e: m['assets'][key] = e; changed = True
+    if changed:
+        m['assets'] = dict(sorted(m['assets'].items()))
+        with open(manifest_path(game), 'w', encoding='utf-8', newline='\n') as f: json.dump(m, f, indent=1); f.write('\n')
+
+
+def reimport_manifest(a):
+    game = os.path.abspath(a.game); m = load_manifest(game)
+    src_dir = os.path.abspath(a.sources or os.path.join(game, 'art'))
+    if not m['assets']: sys.exit('arc_import: %s lists no assets' % manifest_path(game))
+    done = skipped = failed = 0
+    for key, e in m['assets'].items():
+        if not e.get('source'):   # made outside arc_import (sounds, painted textures): 'made' says how
+            print('skip %s: not imported with arc_import (%s)' % (key, e.get('made', 'no source'))); continue
+        src = os.path.join(src_dir, e.get('source', ''))
+        if not os.path.isfile(src): print('skip %s: %s is not in %s' % (key, e.get('source'), src_dir)); skipped += 1; continue
+        cmd = [sys.executable, os.path.abspath(__file__), src, '--game', game, '--force', '--no-manifest',
+               '--name', os.path.splitext(os.path.basename(key))[0]] + e.get('options', [])
+        if e.get('anims'): cmd += ['--anim'] + [os.path.join(src_dir, x) for x in e['anims']]
+        if a.no_preview: cmd.append('--no-preview')
+        if a.dry_run: cmd.append('--dry-run')
+        p = subprocess.run(cmd, capture_output=True, text=True)
+        line = next((l for l in p.stdout.splitlines() if l.startswith(('ok', 'FAIL', 'plan'))), (p.stdout + p.stderr).strip()[-200:])
+        print(line); done += p.returncode == 0; failed += p.returncode != 0
+    print('arc_import --manifest: %d imported, %d skipped (source not found), %d failed' % (done, skipped, failed))
+    sys.exit(1 if failed else 0)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('files', nargs='+')
+    ap.add_argument('files', nargs='*')
     ap.add_argument('--game', default='.')
     ap.add_argument('--name'); ap.add_argument('--into')
     ap.add_argument('--height', type=float); ap.add_argument('--footprint', type=float)
@@ -139,7 +209,13 @@ def main():
     ap.add_argument('--sizes', default='16,32')
     ap.add_argument('--no-preview', action='store_true'); ap.add_argument('--force', action='store_true')
     ap.add_argument('--dry-run', action='store_true'); ap.add_argument('--json', action='store_true')
+    ap.add_argument('--prompt', help='0.10.14: how the asset was made (a generator prompt, an artist, a URL): kept in assets/manifest.json')
+    ap.add_argument('--no-manifest', action='store_true', help='0.10.14: do not record this import in assets/manifest.json')
+    ap.add_argument('--manifest', action='store_true', help='0.10.14: import again every asset assets/manifest.json lists, from --sources')
+    ap.add_argument('--sources', help='0.10.14: with --manifest, the folder holding the original files (default GAME/art)')
     a = ap.parse_args()
+    if a.manifest: return reimport_manifest(a)
+    if not a.files: ap.error('give files to import (or --manifest)')
     if a.name and len(a.files) > 1: ap.error('--name needs exactly one file')
 
     game = os.path.abspath(a.game)
@@ -276,6 +352,7 @@ def main():
                 if r['kind'] == 'texture' and 'w' in info and (info['w'] & (info['w'] - 1) or info['h'] & (info['h'] - 1)):
                     r['warnings'].append('%dx%d is not a power of two: fine for sprites, but mipmaps/repeat on meshes work best with powers of two' % (info['w'], info['h']))
 
+    if not a.dry_run and not a.no_manifest: record_manifest(a, game, assets, results)
     if a.json:
         print(json.dumps({'game': game, 'dry_run': a.dry_run, 'files': results, 'failed': failed}, indent=1))
     else:

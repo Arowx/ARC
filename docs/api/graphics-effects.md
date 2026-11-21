@@ -14,6 +14,17 @@ Part of **Graphics** · [quick reference](../QUICK.md) · [full API](../API.md)
 ```c
 typedef struct arc_fx { float life, life_var; float speed, speed_var; float spread; float radius; arc_v3 gravity; float drag; arc_v3 inherit; float size, size_end, size_var; uint32_t color, color_end; float alpha, alpha_end; float fade_in; float glow; bool additive; float stretch; float spin, spin_var; float bounce; float floor_y; float rate; int burst; arc_texture texture; int frames_x, frames_y; float fps; bool frame_random; float soft; const struct arc_fx *on_death; int on_death_count; const struct arc_fx *on_bounce; int on_bounce_count; bool (*solid)(float x, float y, float z, void *user); void *solid_user; } arc_fx;
 ARC_API void arc_fx_burst(const arc_fx *fx, arc_v3 pos, arc_v3 dir, int count);    // count 0 = fx->burst
+```
+
+0.10.14 floating text: score popups, damage numbers, "+1 UP". It pops up at a world point, rises and shrinks away
+   (0.85 s); several close together stack into a column. ARC ages and draws them after draw() (looks only, never game
+   state), and they show in `frame.texts`. scale 0 = 2 (the built-in font's size)
+
+```c
+ARC_API void arc_popup_text(arc_v3 pos, uint32_t rgb, float scale, const char *text);
+ARC_API void arc_popup_text_2d(float x, float y, uint32_t rgb, float scale, const char *text);    // screen pixels, for 2D games
+ARC_API void arc_popups_clear(void);
+ARC_API int arc_popup_count(void);
 typedef struct { uint32_t id; } arc_emitter;
 ARC_API arc_emitter arc_emitter_create(const arc_fx *fx, arc_v3 pos, arc_v3 dir);    // emits fx->rate per second until destroyed
 ARC_API void arc_emitter_move(arc_emitter e, arc_v3 pos, arc_v3 dir);    // every tick for moving things: spawns spread along the path

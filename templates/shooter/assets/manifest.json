@@ -1,0 +1,109 @@
+{
+ "version": 1,
+ "assets": {
+  "meshes/beetle.arcm": {
+   "source": "beetle.glb",
+   "options": [
+    "--footprint",
+    "1.4",
+    "--yaw",
+    "180",
+    "--texture-size",
+    "512"
+   ],
+   "prompt": "armoured robot beetle (the model faced backwards) (Ludo create3DModelImage + create3DModel)"
+  },
+  "meshes/crate.arcm": {
+   "source": "crate.glb",
+   "options": [
+    "--footprint",
+    "1.2",
+    "--texture-size",
+    "512"
+   ],
+   "prompt": "sci-fi supply crate (Ludo create3DModelImage + create3DModel)"
+  },
+  "meshes/crystal.arcm": {
+   "source": "crystal.glb",
+   "options": [
+    "--height",
+    "0.9",
+    "--texture-size",
+    "512"
+   ],
+   "prompt": "glowing power crystal (Ludo create3DModelImage + create3DModel)"
+  },
+  "meshes/drone.arcm": {
+   "source": "drone.glb",
+   "options": [
+    "--height",
+    "0.8",
+    "--origin",
+    "centre",
+    "--texture-size",
+    "512"
+   ],
+   "prompt": "hovering spiked drone (Ludo create3DModelImage + create3DModel)"
+  },
+  "meshes/player.arcm": {
+   "source": "player.glb",
+   "options": [
+    "--height",
+    "1.4",
+    "--texture-size",
+    "512"
+   ],
+   "prompt": "armoured space marine (rigged mixamo; animate3DModelPreset clips) (Ludo create3DModelImage + create3DModel)",
+   "anims": [
+    "idle.glb",
+    "run.glb",
+    "death.glb",
+    "hit.glb"
+   ]
+  },
+  "meshes/wall.arcm": {
+   "source": "wall.glb",
+   "options": [
+    "--fit",
+    "2.0",
+    "0.9",
+    "0.8",
+    "--texture-size",
+    "512"
+   ],
+   "prompt": "arena barrier segment (Ludo create3DModelImage + create3DModel)"
+  },
+  "music/music.mp3": {
+   "made": "Ludo createMusic, then ffmpeg to MP3 (stereo, 112 kbit/s)",
+   "prompt": "driving synthwave arena loop"
+  },
+  "sfx/boom.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "enemy explodes"
+  },
+  "sfx/hit.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "enemy hit"
+  },
+  "sfx/hurt.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "player hurt"
+  },
+  "sfx/pickup.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "power-up pickup chime"
+  },
+  "sfx/shot.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "laser blaster shot"
+  },
+  "sfx/wave.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "new wave alarm"
+  },
+  "textures/floor.jpg": {
+   "made": "Ludo createImage (a seamless tile), cropped and scaled to 512 px",
+   "prompt": "neon sci-fi floor tile"
+  }
+ }
+}

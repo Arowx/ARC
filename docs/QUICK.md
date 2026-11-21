@@ -32,7 +32,7 @@ arc_app arc_main(int argc, char **argv) {
 
 ## Topics
 
-- [Math (header-only, inlined)](api/math.md) - 61 names
+- [Math (header-only, inlined)](api/math.md) - 62 names
 - [Random numbers (deterministic, PCG32)](api/random-numbers.md) - 13 names
 - [Memory](api/memory.md) - 28 names
 - [App, time and the main loop](api/app-time-and-the-main-loop.md) - 30 names
@@ -45,13 +45,13 @@ arc_app arc_main(int argc, char **argv) {
 - [Lighting, shadows, reflections and post-processing](api/graphics-lighting.md) - 41 names
 - [Drawing meshes and mesh styles](api/graphics-drawing.md) - 27 names
 - [Skeletal animation](api/graphics-animation.md) - 48 names
-- [Particles, trails, decals and stamps](api/graphics-effects.md) - 30 names
+- [Particles, trails, decals and stamps](api/graphics-effects.md) - 34 names
 - [Immediate geometry, quick shapes and 3D lines](api/graphics-shapes.md) - 16 names
 - [2D drawing: rects, sprites, nine-slice, blend, clip](api/graphics-2d.md) - 19 names
 - [Text: built-in font, baked fonts, rich text](api/graphics-text.md) - 36 names
 - [Render targets, screenshots and frame timing](api/graphics-targets.md) - 26 names
 - [Scene speed-ups: cells, portals, LOD, static batches](api/graphics-scene.md) - 32 names
-- [Audio: synth effects, sound files, streamed music, 32-voice mixer](api/audio.md) - 75 names
+- [Audio: synth effects, sound files, streamed music, 32-voice mixer](api/audio.md) - 76 names
 - [Turns and grids (time-unit scheduler, tile grid, line of sight, paths)](api/turns-and-grids.md) - 39 names
 - [UI: immediate-mode widgets (menus, settings, debug panels)](api/ui.md) - 44 names
 - [UX: easing, screen transitions, captions, colour blindness, localisation](api/ux.md) - 42 names
@@ -110,6 +110,7 @@ arc_app arc_main(int argc, char **argv) {
 - `arc_m4_rotate_x`
 - `arc_m4_rotate_z`
 - `arc_m4_trs_y` - translate * rotY(yaw) * scale — the common case for game objects, without three matrix mu…
+- `arc_yaw_to` - 0.10.14: the yaw that turns a model (front +z, as ARC's models face) toward the direction…
 - `arc_m4_perspective`
 - `arc_m4_ortho`
 - `arc_m4_look_at`
@@ -469,6 +470,10 @@ arc_app arc_main(int argc, char **argv) {
 
 - `arc_fx` _(type)_ - ---- particles --------------------------------------------------------------------------…
 - `arc_fx_burst` - count 0 = fx->burst
+- `arc_popup_text` - 0.10.14 floating text: score popups, damage numbers, "+1 UP".
+- `arc_popup_text_2d` - screen pixels, for 2D games
+- `arc_popups_clear`
+- `arc_popup_count`
 - `arc_emitter` _(type)_
 - `arc_emitter_create` - emits fx->rate per second until destroyed
 - `arc_emitter_move` - every tick for moving things: spawns spread along the path
@@ -652,6 +657,7 @@ arc_app arc_main(int argc, char **argv) {
 - `arc_voice` _(type)_ - Playing a sound returns a voice: change or stop it while it plays.
 - `arc_play` - pan -1..1
 - `arc_play_ex` - pitch: playback speed (1 = normal, 2 = an octave up); loop: repeat until arc_voice_stop
+- `arc_play_var` - 0.10.14: pitch 1 +/- pitch_var at random (0.1 = 10%), so repeated shots, hits and footste…
 - `arc_voice_stop`
 - `arc_voice_set_volume`
 - `arc_voice_set_pan`

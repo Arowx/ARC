@@ -57,6 +57,13 @@ translate * rotY(yaw) * scale — the common case for game objects, without thre
 
 ```c
 arc_m4 arc_m4_trs_y(arc_v3 t, float yaw, arc_v3 s);
+```
+
+0.10.14: the yaw that turns a model (front +z, as ARC's models face) toward the direction (dx, dz): for
+   arc_m4_trs_y and cam rigs. Looks only: rules code that must match on every machine uses arc_atan2f(dx, dz)
+
+```c
+float arc_yaw_to(float dx, float dz);
 arc_m4 arc_m4_perspective(float fovy, float aspect, float zn, float zf);
 arc_m4 arc_m4_ortho(float l, float r_, float b, float t, float zn, float zf);
 arc_m4 arc_m4_look_at(arc_v3 eye, arc_v3 at, arc_v3 up);

@@ -1,0 +1,95 @@
+{
+ "version": 1,
+ "assets": {
+  "meshes/arch.arcm": {
+   "source": "arch.glb",
+   "options": [
+    "--origin",
+    "bottom",
+    "--texture-size",
+    "512",
+    "--fit",
+    "10",
+    "0",
+    "0"
+   ],
+   "prompt": "start finish arch gantry (Ludo create3DModelImage + create3DModel prop)"
+  },
+  "meshes/cone.arcm": {
+   "source": "cone.glb",
+   "options": [
+    "--height",
+    "0.6",
+    "--origin",
+    "bottom",
+    "--texture-size",
+    "256"
+   ],
+   "prompt": "orange traffic cone with white stripe (Ludo create3DModelImage + create3DModel prop)"
+  },
+  "meshes/kart.arcm": {
+   "source": "kart.glb",
+   "options": [
+    "--footprint",
+    "1.9",
+    "--origin",
+    "bottom",
+    "--texture-size",
+    "512"
+   ],
+   "prompt": "chunky red toy racing kart (Ludo create3DModelImage + create3DModel prop)"
+  },
+  "meshes/tyres.arcm": {
+   "source": "tyres.glb",
+   "options": [
+    "--height",
+    "1.1",
+    "--origin",
+    "bottom",
+    "--texture-size",
+    "512"
+   ],
+   "prompt": "stack of racing tyres (Ludo create3DModelImage + create3DModel prop)"
+  },
+  "music/music.mp3": {
+   "made": "Ludo createMusic, then ffmpeg to MP3 (stereo, 112 kbit/s)",
+   "prompt": "upbeat racing loop"
+  },
+  "sfx/beep.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "countdown beep"
+  },
+  "sfx/boost.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "boost whoosh"
+  },
+  "sfx/bump.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "kart bump"
+  },
+  "sfx/engine.qoa": {
+   "made": "Ludo createSoundEffect, then ffmpeg to mono 22 kHz and QOA (a loop: MP3 encoder delay would leave a gap)",
+   "prompt": "small kart engine hum, loopable (pitch follows speed)"
+  },
+  "sfx/go.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "start horn"
+  },
+  "sfx/lap.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "lap chime"
+  },
+  "sfx/skid.qoa": {
+   "made": "Ludo createSoundEffect, then ffmpeg to mono 22 kHz and QOA (a loop: MP3 encoder delay would leave a gap)",
+   "prompt": "tyre squeal, loopable"
+  },
+  "textures/grass.jpg": {
+   "made": "Ludo createImage (a seamless tile), cropped and scaled to 512 px",
+   "prompt": "mown grass tile"
+  },
+  "textures/road.jpg": {
+   "made": "Ludo createImage (a seamless tile), cropped and scaled to 512 px",
+   "prompt": "asphalt tile"
+  }
+ }
+}

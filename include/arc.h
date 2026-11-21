@@ -55,8 +55,8 @@ extern "C" {
 #define ARC_GAME_API
 #endif
 
-#define ARC_VERSION "0.10.13"
-#define ARC_VERSION_NUM 1013  /* major*10000 + minor*100 + patch; games can #if ARC_VERSION_NUM < ... #error */
+#define ARC_VERSION "0.10.14"
+#define ARC_VERSION_NUM 1014  /* major*10000 + minor*100 + patch; games can #if ARC_VERSION_NUM < ... #error */
 /* 0.9.8 feature macros: one per feature group, so a game (or its CMake) can #if on what this arc.h has instead of
    searching it for function names. The value is the ARC_VERSION_NUM it arrived in. New groups are added here with
    each release; a macro is never removed while its feature stays. */
@@ -113,6 +113,7 @@ extern "C" {
 #define ARC_HAS_LINES2D        1013  /* arc_draw_lines2d (thick glowing 2D segments in bulk); arc_app.max_2d_vertices; frame.vertices_2d */
 #define ARC_HAS_MUSIC_LOOP     1013  /* arc_music_set_loop / arc_music_set_loop_fade; --audio-sim runs the mixer headless */
 #define ARC_HAS_TERRAIN_COLOR_MAP 1013  /* arc_terrain_desc.color_map, arc_terrain_set_color_map, arc_terrain_set_splat */
+#define ARC_HAS_JUICE          1014  /* arc_play_var, arc_popup_text / _2d, arc_yaw_to */
 
 /* ======================================================================== */
 /* Math (header-only, inlined)                                              */
@@ -177,6 +178,9 @@ static inline arc_m4 arc_m4_trs_y(arc_v3 t, float yaw, arc_v3 s) {
     r.m[0] = c * s.x; r.m[2] = -sn * s.x; r.m[5] = s.y; r.m[8] = sn * s.z; r.m[10] = c * s.z;
     r.m[12] = t.x; r.m[13] = t.y; r.m[14] = t.z; return r;
 }
+/* 0.10.14: the yaw that turns a model (front +z, as ARC's models face) toward the direction (dx, dz): for
+   arc_m4_trs_y and cam rigs. Looks only: rules code that must match on every machine uses arc_atan2f(dx, dz) */
+static inline float arc_yaw_to(float dx, float dz) { return atan2f(dx, dz); }
 static inline arc_m4 arc_m4_perspective(float fovy, float aspect, float zn, float zf) {
     arc_m4 r; memset(&r, 0, sizeof r); float f = 1.0f / tanf(fovy * 0.5f);
     r.m[0] = f / aspect; r.m[5] = f; r.m[10] = (zf + zn) / (zn - zf); r.m[11] = -1.0f; r.m[14] = 2.0f * zf * zn / (zn - zf); return r;
@@ -1096,6 +1100,13 @@ typedef struct arc_fx {
     void *solid_user;                /* with `bounce`, axis by axis; with bounce 0 they end there (and fire on_death) */
 } arc_fx;
 ARC_API void arc_fx_burst(const arc_fx *fx, arc_v3 pos, arc_v3 dir, int count);   /* count 0 = fx->burst */
+/* 0.10.14 floating text: score popups, damage numbers, "+1 UP". It pops up at a world point, rises and shrinks away
+   (0.85 s); several close together stack into a column. ARC ages and draws them after draw() (looks only, never game
+   state), and they show in `frame.texts`. scale 0 = 2 (the built-in font's size) */
+ARC_API void arc_popup_text(arc_v3 pos, uint32_t rgb, float scale, const char *text);
+ARC_API void arc_popup_text_2d(float x, float y, uint32_t rgb, float scale, const char *text);   /* screen pixels, for 2D games */
+ARC_API void arc_popups_clear(void);
+ARC_API int  arc_popup_count(void);
 typedef struct { uint32_t id; } arc_emitter;
 ARC_API arc_emitter arc_emitter_create(const arc_fx *fx, arc_v3 pos, arc_v3 dir);  /* emits fx->rate per second until destroyed */
 ARC_API void arc_emitter_move(arc_emitter e, arc_v3 pos, arc_v3 dir);   /* every tick for moving things: spawns spread along the path */
@@ -1626,6 +1637,9 @@ typedef struct { uint32_t id; } arc_voice;
 ARC_API arc_voice arc_play(arc_sound s, float volume, float pan);       /* pan -1..1 */
 /* pitch: playback speed (1 = normal, 2 = an octave up); loop: repeat until arc_voice_stop */
 ARC_API arc_voice arc_play_ex(arc_sound s, float volume, float pan, float pitch, bool loop);
+/* 0.10.14: pitch 1 +/- pitch_var at random (0.1 = 10%), so repeated shots, hits and footsteps don't sound the same.
+   The randomness is ARC's own, for looks: the game's arc_rand_* sequence and its replays are untouched */
+ARC_API arc_voice arc_play_var(arc_sound s, float volume, float pan, float pitch_var);
 ARC_API void      arc_voice_stop(arc_voice v);
 ARC_API void      arc_voice_set_volume(arc_voice v, float volume);
 ARC_API void      arc_voice_set_pan(arc_voice v, float pan);

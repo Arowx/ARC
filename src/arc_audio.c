@@ -999,3 +999,12 @@ int16_t *arc__qoa_decode_all(const uint8_t *d, size_t n, int *channels, int *rat
     while (got < qi.frames && at < n) { int fs = 0; size_t used = qoa_frame(d + at, n - at, qi.channels, out + (size_t)got * qi.channels, &fs); if (!used) break; at += used; got += fs; }
     *channels = qi.channels; *rate = qi.rate; *frames = got < qi.frames ? got : qi.frames; return out;
 }
+
+/* 0.10.14 juice: the same sound a little different each time (a pitch within +/- pitch_var), from ARC's own generator
+   for looks, so the game's arc_rand_* sequence (and its replays) stays exactly as it was */
+arc_voice arc_play_var(arc_sound s, float volume, float pan, float pitch_var) {
+    static arc_rng r; static bool seeded;
+    if (!seeded) { arc_rng_seed(&r, 0x5EED5u, 7); seeded = true; }
+    float p = 1.0f + arc_rng_rangef(&r, -pitch_var, pitch_var);
+    return arc_play_ex(s, volume, pan, p < 0.1f ? 0.1f : p, false);
+}

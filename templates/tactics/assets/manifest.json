@@ -1,0 +1,143 @@
+{
+ "version": 1,
+ "assets": {
+  "meshes/archer.arcm": {
+   "source": "archer.glb",
+   "options": [
+    "--height",
+    "1",
+    "--origin",
+    "bottom",
+    "--texture-size",
+    "512"
+   ],
+   "anims": [
+    "idle.glb",
+    "walk.glb",
+    "attack.glb",
+    "hit.glb",
+    "death.glb"
+   ],
+   "prompt": "small chunky toy archer for a tactics board game (Ludo create3DModelImage + create3DModel rigged mixamo; animate3DModelPreset quaternius clips)"
+  },
+  "meshes/goblin.arcm": {
+   "source": "goblin.glb",
+   "options": [
+    "--height",
+    "1",
+    "--origin",
+    "bottom",
+    "--texture-size",
+    "512"
+   ],
+   "anims": [
+    "idle.glb",
+    "walk.glb",
+    "attack.glb",
+    "hit.glb",
+    "death.glb"
+   ],
+   "prompt": "small chunky toy goblin for a tactics board game (Ludo create3DModelImage + create3DModel rigged mixamo; animate3DModelPreset quaternius clips)"
+  },
+  "meshes/knight.arcm": {
+   "source": "knight.glb",
+   "options": [
+    "--height",
+    "1",
+    "--origin",
+    "bottom",
+    "--texture-size",
+    "512"
+   ],
+   "anims": [
+    "idle.glb",
+    "walk.glb",
+    "attack.glb",
+    "hit.glb",
+    "death.glb"
+   ],
+   "prompt": "small chunky toy knight for a tactics board game (Ludo create3DModelImage + create3DModel rigged mixamo; animate3DModelPreset quaternius clips)"
+  },
+  "meshes/orc.arcm": {
+   "source": "orc.glb",
+   "options": [
+    "--height",
+    "1",
+    "--origin",
+    "bottom",
+    "--texture-size",
+    "512"
+   ],
+   "anims": [
+    "idle.glb",
+    "walk.glb",
+    "attack.glb",
+    "hit.glb",
+    "death.glb"
+   ],
+   "prompt": "small chunky toy orc for a tactics board game (Ludo create3DModelImage + create3DModel rigged mixamo; animate3DModelPreset quaternius clips)"
+  },
+  "meshes/ruin.arcm": {
+   "source": "ruin.glb",
+   "options": [
+    "--origin",
+    "bottom",
+    "--texture-size",
+    "512",
+    "--fit",
+    "0.96",
+    "0",
+    "0.96"
+   ],
+   "prompt": "ruined stone wall block (Ludo create3DModelImage + create3DModel prop)"
+  },
+  "meshes/tree.arcm": {
+   "source": "tree.glb",
+   "options": [
+    "--height",
+    "1.6",
+    "--origin",
+    "bottom",
+    "--texture-size",
+    "512"
+   ],
+   "prompt": "small round toy tree (Ludo create3DModelImage + create3DModel prop)"
+  },
+  "music/music.mp3": {
+   "made": "Ludo createMusic, then ffmpeg to MP3 (stereo, 112 kbit/s)",
+   "prompt": "light medieval strategy loop"
+  },
+  "sfx/arrow.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "bow twang and arrow whoosh"
+  },
+  "sfx/death.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "a toy soldier falls"
+  },
+  "sfx/hit.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "sword hits armour"
+  },
+  "sfx/move.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "footsteps on grass"
+  },
+  "sfx/select.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "wooden click as a unit is picked"
+  },
+  "sfx/turn.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "a horn for a new turn"
+  },
+  "sfx/win.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "victory fanfare"
+  },
+  "textures/grass.jpg": {
+   "made": "Ludo createImage (a seamless tile), cropped and scaled to 512 px",
+   "prompt": "stylised grass and stones tile"
+  }
+ }
+}
