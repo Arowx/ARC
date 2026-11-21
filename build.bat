@@ -108,6 +108,13 @@ rem 0.10.11: thick lines and multi-touch (Vector Trader) on the demo
 cl %CFLAGS% /DARC_HEADLESS_ONLY samples\demo\demo.c src\arc.c /Fo:build\ /Fe:build\demo_headless.exe || exit /b 1
 python tools\arc_check.py tests\line_check.md --exe build\demo_headless.exe || exit /b 1
 python tools\arc_check.py tests\touch_check.md --exe build\demo_headless.exe || exit /b 1
+python tools\arc_check.py tests\nan_check.md --exe build\demo_headless.exe || exit /b 1
+python tools\arc_check.py tests\text_check.md --exe build\demo_headless.exe || exit /b 1
+python tools\arc_check.py tests\save_path_check.md --exe build\demo_headless.exe || exit /b 1
+python tools\arc_check.py tests\command_clash_check.md --exe build\demo_headless.exe || exit /b 1
+python tools\arc_check.py tools\tests\two_blocks.md > build\two_blocks.txt
+if not errorlevel 1 (echo ARC error arc_check should fail one block & exit /b 1)
+findstr /c:"2/3 blocks passed" build\two_blocks.txt >nul || (type build\two_blocks.txt & echo ARC error arc_check blocks & exit /b 1)
 python tests\line_width_test.py build\demo_headless.exe || exit /b 1
 python tests\touch_replay_test.py build\demo_headless.exe || exit /b 1
 python tools\arc_doctor.py tests\doctor_fixture > build\doctor.txt

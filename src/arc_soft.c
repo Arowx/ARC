@@ -294,7 +294,7 @@ static uint32_t hx_hash(int x, int y) {
     uint32_t h = ((uint32_t)x * 73856093u) ^ ((uint32_t)y * 19349663u);
     h ^= h >> 13; h *= 0x5bd1e995u; h ^= h >> 15; return h;
 }
-static float hx_gain(float x, float k) { float s = 0.5f * powf(2.0f * (x < 0.5f ? x : 1.0f - x), k); return x < 0.5f ? s : 1.0f - s; }
+static float hx_gain(float x, float k) { x = arc_clampf(x, 0.0f, 1.0f); float s = 0.5f * powf(arc_maxf(2.0f * (x < 0.5f ? x : 1.0f - x), 0.0f), k); return x < 0.5f ? s : 1.0f - s; }   /* 0.10.12 clamped (GPUs gave NaN) */
 static void hex_sample(const arc__tex_rec *t, int lod, float u, float v, float rotate, float contrast, float out[4]) {
     const float S3 = 3.4641016f;   /* 2 sqrt 3 */
     float sx = u * S3, sy = v * S3, px = sx - sy * 0.57735027f, py = sy * 1.15470054f;
@@ -1338,6 +1338,14 @@ static void soft_lut(const float *post, float c[3]) {
     for (int i = 0; i < 3; i++) c[i] += (a[i] + (b[i] - a[i]) * f - c[i]) * k;
 }
 static void soft_post(const float *post, const arc__pass *P) {
+    if (S.hdr) {   /* 0.10.12: NaN / Inf scene pixels become black (magenta with `post nan on`) and are counted */
+        float *c = S.hdr; size_t n = (size_t)S.hw * (size_t)S.hh;
+        for (size_t k = 0; k < n; k++, c += 4) {
+            bool bad = !isfinite(c[0]) || !isfinite(c[1]) || !isfinite(c[2]);
+            if (bad) { arc__post_nan_count++; if (arc__post_nan) { c[0] = 1.0f; c[1] = 0.0f; c[2] = 1.0f; continue; } }
+            for (int q = 0; q < 3; q++) if (!isfinite(c[q]) || c[q] < 0.0f) c[q] = 0.0f;
+        }
+    }
     bool bloom = post[ARC__POST_BLOOM] > 0, tilt = post[ARC__POST_TILT] > 0, ssao = post[ARC__POST_SSAO] > 0, fxaa = post[ARC__POST_FXAA] > 0;
     bool lut = post[ARC__POST_LUT] > 0 && arc__textures[(int)post[ARC__POST_LUT]].used;
     float crt = post[ARC__POST_CRT], pix = post[ARC__POST_PIXELATE], ab = post[ARC__POST_ABERRATION], scan = post[ARC__POST_SCANLINES];

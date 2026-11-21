@@ -19,7 +19,17 @@ Aligned and decorated text (built-in font). (x, y) is the anchor the flags descr
    ARC_TEXT_RICH (0.7) reads markup (see arc_rich_draw); arc_font_draw_aligned takes the same flags.
 
 ```c
-enum { ARC_TEXT_CENTER = 1, ARC_TEXT_RIGHT = 2, ARC_TEXT_MIDDLE = 4, ARC_TEXT_BOTTOM = 8, ARC_TEXT_SHADOW = 16, ARC_TEXT_OUTLINE = 32, ARC_TEXT_RICH = 64 };
+enum { ARC_TEXT_CENTER = 1, ARC_TEXT_RIGHT = 2, ARC_TEXT_MIDDLE = 4, ARC_TEXT_BOTTOM = 8, ARC_TEXT_SHADOW = 16, ARC_TEXT_OUTLINE = 32, ARC_TEXT_RICH = 64, ARC_TEXT_EXACT = 128 };
+```
+
+0.10.12: the built-in 8x8 font drops rows below scale 1 and on half pixels ("DOCK" read "DUCK"). It is drawn on whole
+   pixels (after alignment), and arc_text_fit_scale returns whole sizes from 1 up. arc_text_snap_builtin: ARC_TEXT_SNAP_PIXELS
+   (the default), ARC_TEXT_SNAP_SIZES (sizes of 1 and more rounded to whole numbers as well; arc_text_width / _height
+   agree), ARC_TEXT_SNAP_OFF (as given, the old behaviour). ARC_TEXT_EXACT for one draw. Baked fonts are unchanged.
+
+```c
+enum { ARC_TEXT_SNAP_OFF = 0, ARC_TEXT_SNAP_PIXELS = 1, ARC_TEXT_SNAP_SIZES = 2 };
+ARC_API void arc_text_snap_builtin(int mode);
 ARC_API float arc_draw_text_ex(float x, float y, float scale, uint32_t rgb, int flags, const char *text);
 ARC_API float arc_text_height(float scale, const char *text);
 ```

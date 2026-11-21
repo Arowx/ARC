@@ -41,10 +41,16 @@ as agent commands, and tests each `expect` line against the game's output at tha
 |---|---|
 | `game path/to/game.c` | build it headless (`build.sh headless`; on Windows `build.bat`) |
 | `exe build/x_headless` | run an already built game |
-| `args --seed 3 --set speed=2` | extra command-line flags |
+| `args --seed 3 --set speed=2` | extra command-line flags (0.10.12: relative paths given to `--save-dir`, `--record`, `--replay`, `--script`, `--editor`, `--dump-at-exit` are read from the check file's folder, not from `build/` where the game runs) |
+| `continue` | (0.10.12) carry on in the previous block's game instead of a fresh one |
 | `do step 60; press D; ...` | agent commands (see AGENTS.md) |
 | `expect PATH OP VALUE` | a check (below) |
 | any other line | passed to the game as an agent command (`shot`, `compare REF.png 0.5`, `ui_click Play`, ...) |
+
+**Several blocks (0.10.12):** every ```arc-check block in a file runs, in order, each in a fresh game process, named by
+the `##` heading above it. A block without `game` / `exe` / `args` lines uses the last ones given; `continue` keeps the
+previous block's game running. The last line reads `arc_check: N/M checks passed, B/C blocks passed`; any failure
+exits 1. `--block N` or `--name TEXT` runs one; `--fail-fast` stops at the first block that fails.
 
 Paths read three outputs:
 - **the dump** (`dump`): `game.score` is what the game's `dump()` wrote; `stats.draw_calls`, `tick` ... are ARC's;

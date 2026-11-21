@@ -48,12 +48,12 @@ arc_app arc_main(int argc, char **argv) {
 - [Particles, trails, decals and stamps](api/graphics-effects.md) - 30 names
 - [Immediate geometry, quick shapes and 3D lines](api/graphics-shapes.md) - 16 names
 - [2D drawing: rects, sprites, nine-slice, blend, clip](api/graphics-2d.md) - 15 names
-- [Text: built-in font, baked fonts, rich text](api/graphics-text.md) - 34 names
+- [Text: built-in font, baked fonts, rich text](api/graphics-text.md) - 36 names
 - [Render targets, screenshots and frame timing](api/graphics-targets.md) - 26 names
 - [Scene speed-ups: cells, portals, LOD, static batches](api/graphics-scene.md) - 32 names
 - [Audio: synth effects, sound files, streamed music, 32-voice mixer](api/audio.md) - 73 names
 - [Turns and grids (time-unit scheduler, tile grid, line of sight, paths)](api/turns-and-grids.md) - 39 names
-- [UI: immediate-mode widgets (menus, settings, debug panels)](api/ui.md) - 41 names
+- [UI: immediate-mode widgets (menus, settings, debug panels)](api/ui.md) - 44 names
 - [UX: easing, screen transitions, captions, colour blindness, localisation](api/ux.md) - 42 names
 - [Collision: ray tests, a static collision world, a character controller](api/collision.md) - 18 names
 - [Physics (0.9.4): deterministic rigid bodies](api/physics.md) - 53 names
@@ -539,6 +539,7 @@ arc_app arc_main(int argc, char **argv) {
 - `arc_draw_text` - Built-in 8x8 font.
 - `arc_text_width`
 - `arc_draw_textf`
+- `arc_text_snap_builtin`
 - `arc_draw_text_ex`
 - `arc_text_height`
 - `arc_text_fit_scale` - the largest built-in-font scale (up to max_scale) at which text fits max_width (for fitti…
@@ -750,6 +751,9 @@ arc_app arc_main(int argc, char **argv) {
 ## [UI: immediate-mode widgets (menus, settings, debug panels)](api/ui.md)
 
 - `arc_ui_begin` - a panel; "" = no title bar; drag the title to move it
+- `arc_ui_panel_offset` - 0.10.12 panel positions (MechBattleArc): a panel's title bar can be dragged, and ARC keep…
+- `arc_ui_set_panel_offset`
+- `arc_ui_panel_rect`
 - `arc_ui_end`
 - `arc_ui_columns` - the next widgets sit n to a row (1 = back to one per row)
 - `arc_ui_label`

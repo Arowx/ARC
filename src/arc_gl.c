@@ -178,7 +178,7 @@ static const char *MESH_FS =
     "uniform highp sampler2D u_wmask; uniform vec4 u_wm0, u_wm1, u_cut0, u_cut1, u_cut2;\n"   /* 0.9.9 world mask (unit 16), cutaway (see arc__pass); cut2.w: this mesh is cut */   /* 0.9.6 splat: layer scales; sharpness, layers, on (see ARC__MAT3_*) */
     "uniform sampler2D u_ptex; uniform vec4 u_paint, u_paint3;\n"   /* 0.8.8 paint mask (unit 10) and the second colour (w: on) */   /* 0.8.8 x: the colour texture's world scale (0 = mesh uv) */   /* 0.8.7 planar reflections (see arc__pass.mirror) */   /* 0.8.4 detail map, arc__mesh_rec.mat2 */
     "uint hx_h(int x, int y) { uint h = (uint(x) * 73856093u) ^ (uint(y) * 19349663u); h ^= h >> 13u; h *= 0x5bd1e995u; h ^= h >> 15u; return h; }\n"
-    "float hx_gain(float x, float k) { float s = 0.5 * pow(2.0 * (x < 0.5 ? x : 1.0 - x), k); return x < 0.5 ? s : 1.0 - s; }\n"
+    "float hx_gain(float x, float k) { x = clamp(x, 0.0, 1.0); float s = 0.5 * pow(max(2.0 * (x < 0.5 ? x : 1.0 - x), 0.0), k); return x < 0.5 ? s : 1.0 - s; }\n"   /* 0.10.12: a weight of 1.0000001 made pow's base negative: NaN */
     "vec4 hex_tex(sampler2D t, vec2 st, float rot, float con, bool flip) {\n"   /* 0.8.4 hex tiling: see arc_internal.h */
     "  const float S3 = 3.4641016; vec2 gx = dFdx(st), gy = dFdy(st);\n"
     "  vec2 p = vec2(st.x * S3 - st.y * S3 * 0.57735027, st.y * S3 * 1.15470054), b = floor(p), f = p - b;\n"
@@ -434,9 +434,11 @@ static const char *SKY_FS =   /* the same gradient as the soft renderer's sky_fi
     "}\n";
 static const char *DOWN_FS =
     "in vec2 v_uv; uniform sampler2D u_src; uniform vec2 u_texel; uniform float u_threshold; out vec4 o_col;\n"
+    "bool badf(float x) { highp uint u = floatBitsToUint(x); return (u & 0x7F800000u) == 0x7F800000u; }\n"   /* 0.10.12: NaN or Inf (bit test: no compiler folds it) */
+    "vec3 fin(vec3 c) { return vec3(badf(c.r) ? 0.0 : max(c.r, 0.0), badf(c.g) ? 0.0 : max(c.g, 0.0), badf(c.b) ? 0.0 : max(c.b, 0.0)); }\n"
     "void main() {\n"
-    "  vec3 c = (texture(u_src, v_uv + vec2(-u_texel.x, -u_texel.y)).rgb + texture(u_src, v_uv + vec2(u_texel.x, -u_texel.y)).rgb\n"
-    "          + texture(u_src, v_uv + vec2(-u_texel.x, u_texel.y)).rgb + texture(u_src, v_uv + u_texel).rgb) * 0.25;\n"
+    "  vec3 c = (fin(texture(u_src, v_uv + vec2(-u_texel.x, -u_texel.y)).rgb) + fin(texture(u_src, v_uv + vec2(u_texel.x, -u_texel.y)).rgb)\n"
+    "          + fin(texture(u_src, v_uv + vec2(-u_texel.x, u_texel.y)).rgb) + fin(texture(u_src, v_uv + u_texel).rgb)) * 0.25;\n"
     "  if (u_threshold >= 0.0) { float l = dot(c, vec3(0.2126, 0.7152, 0.0722)); c = min(c * (l > 1e-4 ? max(l - u_threshold, 0.0) / l : 0.0), vec3(64.0)); }\n"
     "  o_col = vec4(c, 1.0);\n"
     "}\n";
@@ -487,11 +489,14 @@ static const char *SSAO_FS =
     "  o_col = vec4(1.0 - occ / 16.0, 1.0, 0.0, 1.0);\n"
     "}\n";
 static const char *COMP_FS =
-    "in vec2 v_uv; uniform sampler2D u_scene, u_bloom, u_tilt, u_ao, u_lut; uniform vec4 u_p0, u_p1, u_p2, u_p3, u_p4, u_res; out vec4 o_col;\n"
+    "in vec2 v_uv; uniform sampler2D u_scene, u_bloom, u_tilt, u_ao, u_lut; uniform vec4 u_p0, u_p1, u_p2, u_p3, u_p4, u_res; uniform float u_nan; out vec4 o_col;\n"
+    "bool badf(float x) { highp uint u = floatBitsToUint(x); return (u & 0x7F800000u) == 0x7F800000u; }\n"   /* 0.10.12: NaN or Inf (bit test: no compiler folds it) */
+    "vec3 fin(vec3 c) { return vec3(badf(c.r) ? 0.0 : max(c.r, 0.0), badf(c.g) ? 0.0 : max(c.g, 0.0), badf(c.b) ? 0.0 : max(c.b, 0.0)); }\n"
+
     /* p0: bloom, exposure, tonemap, desaturate; p1: contrast, vignette, aspect, scanline period; p2: tilt, focus, width, 1/levels;
        p3: ssao, fxaa, crt, pixelate; p4: aberration, scanlines, lut strength (0 = none), lut size; res: w, h, 1/w, 1/h.
        q: top-down screen uv (as the soft renderer); tc: texture coordinates (bottom-up) */
-    "vec3 S(vec2 tc) { return texture(u_scene, tc).rgb; }\n"
+    "vec3 S(vec2 tc) { return fin(texture(u_scene, tc).rgb); }\n"
     "float luma(vec3 c) { return sqrt(dot(clamp(c, 0.0, 1.0), vec3(0.299, 0.587, 0.114))); }\n"
     "float FL(vec2 p) { return luma(S(p)); }\n"
     "vec3 fxaa(vec2 tc) {\n"
@@ -532,6 +537,7 @@ static const char *COMP_FS =
     "  return mix(texture(u_lut, vec2((b0 * n + x) / (n * n), y)).rgb, texture(u_lut, vec2((b1 * n + x) / (n * n), y)).rgb, f);\n"
     "}\n"
     "void main() {\n"
+    "  if (u_nan > 0.5) { vec3 r = texture(u_scene, v_uv).rgb; if (badf(r.r) || badf(r.g) || badf(r.b)) { o_col = vec4(1.0, 0.0, 1.0, 1.0); return; } }\n"   /* post nan on */
     "  vec2 uv = vec2(v_uv.x, 1.0 - v_uv.y), q = uv, tc = v_uv;\n"
     "  if (u_p3.z > 0.0) {\n"
     "    vec2 d = q - 0.5; q = 0.5 + d * (1.0 + 0.25 * u_p3.z * dot(2.0 * d, 2.0 * d));\n"
@@ -593,7 +599,7 @@ static struct {
     /* post-processing: the screen's 3D in HDR (optionally multisampled, resolved), bloom levels */
     GLuint down_prog, up_prog, comp_prog, post_vao, sky_prog;
     GLint uk_ivp, uk_top, uk_hor, uk_bot;
-    GLint ud_src, ud_texel, ud_thr, uu_src, uu_down, uu_texel, uc_scene, uc_bloom, uc_p0, uc_p1, uc_p2, uc_tilt, uc_ao, uc_lut, uc_p3, uc_p4, uc_res;
+    GLint ud_src, ud_texel, ud_thr, uu_src, uu_down, uu_texel, uc_scene, uc_bloom, uc_p0, uc_p1, uc_p2, uc_tilt, uc_ao, uc_lut, uc_p3, uc_p4, uc_res, uc_nan;
     GLuint ssao_prog; GLint ua_depth, ua_ivp, ua_vp, ua_ss;
     /* the post buffers: ps[0] the screen's, the rest render targets' own (0.8.2, arc_target_set_post; ps_id: the target) */
     struct gl_pset {
@@ -843,7 +849,7 @@ static bool gl_init(void) {
         GL.uc_p0 = glGetUniformLocation(GL.comp_prog, "u_p0"); GL.uc_p1 = glGetUniformLocation(GL.comp_prog, "u_p1");
         GL.uc_p2 = glGetUniformLocation(GL.comp_prog, "u_p2"); GL.uc_tilt = glGetUniformLocation(GL.comp_prog, "u_tilt");
         GL.uc_ao = glGetUniformLocation(GL.comp_prog, "u_ao"); GL.uc_lut = glGetUniformLocation(GL.comp_prog, "u_lut");
-        GL.uc_p3 = glGetUniformLocation(GL.comp_prog, "u_p3"); GL.uc_p4 = glGetUniformLocation(GL.comp_prog, "u_p4"); GL.uc_res = glGetUniformLocation(GL.comp_prog, "u_res");
+        GL.uc_p3 = glGetUniformLocation(GL.comp_prog, "u_p3"); GL.uc_p4 = glGetUniformLocation(GL.comp_prog, "u_p4"); GL.uc_res = glGetUniformLocation(GL.comp_prog, "u_res"); GL.uc_nan = glGetUniformLocation(GL.comp_prog, "u_nan");
         GL.ssao_prog = gl_program(POST_VS, SSAO_FS);
         if (GL.ssao_prog) {
             GL.ua_depth = glGetUniformLocation(GL.ssao_prog, "u_depth"); GL.ua_ivp = glGetUniformLocation(GL.ssao_prog, "u_ivp");
@@ -1319,7 +1325,7 @@ static void gl_post(const float *post, const arc__pass *P, GLuint screen, int w,
     float p3[4] = { ssao ? post[ARC__POST_SSAO] : 0, post[ARC__POST_FXAA], post[ARC__POST_CRT], post[ARC__POST_PIXELATE] };
     float p4[4] = { post[ARC__POST_ABERRATION], post[ARC__POST_SCANLINES], lut ? post[ARC__POST_LUT_STRENGTH] : 0, post[ARC__POST_LUT_N] };
     float res[4] = { (float)w, (float)h, 1.0f / (float)w, 1.0f / (float)h };
-    glUniform4fv(GL.uc_p3, 1, p3); glUniform4fv(GL.uc_p4, 1, p4); glUniform4fv(GL.uc_res, 1, res);
+    glUniform4fv(GL.uc_p3, 1, p3); glUniform4fv(GL.uc_p4, 1, p4); glUniform4fv(GL.uc_res, 1, res); glUniform1f(GL.uc_nan, arc__post_nan ? 1.0f : 0.0f);
     glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, ssao ? PS->ao_tex : PS->scene_tex);
     glActiveTexture(GL_TEXTURE4); glBindTexture(GL_TEXTURE_2D, lut ? GL.tex[lut] : PS->scene_tex);
     float p2[4] = { tilt ? post[ARC__POST_TILT] : 0, post[ARC__POST_TILT_FOCUS], post[ARC__POST_TILT_WIDTH], 1.0f / ARC__TILT_LEVELS };

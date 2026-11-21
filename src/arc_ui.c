@@ -39,6 +39,8 @@ static struct {
     /* for agents */
     ui_widget_info info[UI_MAX_WIDGETS]; int ninfo, ninfo_last; ui_widget_info info_last[UI_MAX_WIDGETS];
     ui_panel_rec panels[UI_MAX_PANELS];
+    /* 0.10.12 each panel's rectangle last tick (window pixels, after the drag) and its title, by the slot in panels[] */
+    struct { float x, y, w, h; uint64_t tick; char title[64]; } prect[UI_MAX_PANELS]; int pslot;
     bool used_this_tick;
     bool disabled, dim;
     ui_skin skin[ARC_UI_SKIN_COUNT];   /* arc_ui_enabled(false) / the widget being drawn now is disabled */
@@ -243,7 +245,21 @@ void arc_ui_begin(const char *title, float x, float y, float w) { U.dim = false;
     ui_panel_rec *pr = panel_rec(U.panel_id);
     float p = pad();
     if (pr && UL.anchored) pr->dx = pr->dy = 0;   /* 0.10.1 anchored panels stay where their anchor puts them */
+    if (pr && title && *title && !UL.anchored) {   /* drag the title bar to move the panel (kept until the program ends) */
+        float hh = text_h() + p * 2, pw = w * ds();
+        uint32_t tid = U.panel_id ^ 0x7177u;
+        if (arc_key_pressed(ARC_MOUSE_LEFT) && mouse_in(x + pr->dx, y + pr->dy, pw, hh)) { U.drag_panel = tid; arc_v2 m = arc_mouse(); U.drag_off_x = m.x - pr->dx; U.drag_off_y = m.y - pr->dy; }
+        if (U.drag_panel == tid && arc_key_down(ARC_MOUSE_LEFT)) { arc_v2 m = arc_mouse(); pr->dx = m.x - U.drag_off_x; pr->dy = m.y - U.drag_off_y; }
+        /* 0.10.12: the title bar always stays in the window (inside the safe area), while dragging and after a resize */
+        float ax = 0, ay = 0, aw = (float)arc_width(), ah = (float)arc_height();
+        if (!arc__viewport_cur(NULL, NULL, NULL, NULL)) { arc_rectf sa = arc_safe_area(); if (sa.w > 0 && sa.h > 0) { ax = sa.x; ay = sa.y; aw = sa.w; ah = sa.h; } }
+        float keep = arc_minf(48.0f * ds(), pw);   /* this much of the title bar stays on screen across */
+        float nx = arc_clampf(x + pr->dx, ax + keep - pw, ax + aw - keep), ny = arc_clampf(y + pr->dy, ay, arc_maxf(ay, ay + ah - hh));
+        pr->dx = nx - x; pr->dy = ny - y;
+    }
     if (pr) { x += pr->dx; y += pr->dy; }
+    U.pslot = pr ? (int)(pr - U.panels) : -1;
+    if (U.pslot >= 0) { char vis[64]; visible(title ? title : "", vis, sizeof vis); snprintf(U.prect[U.pslot].title, sizeof U.prect[U.pslot].title, "%s", vis); }
     U.in_panel = true; U.px = x; U.py = y; U.pw = w * ds(); U.cols = 1; U.col = 0; U.col_maxh = 0;
     U.bg_cmd = U.ncmd < UI_MAX_CMDS ? U.ncmd : -1; box(ARC_UI_SKIN_PANEL, x, y, U.pw, 0, th()->panel);
     U.cy = y + p;
@@ -252,14 +268,45 @@ void arc_ui_begin(const char *title, float x, float y, float w) { U.dim = false;
         float h = text_h() + p * 2;
         box(ARC_UI_SKIN_TITLE, x, y, U.pw, h, th()->title);
         text_fit(x + p, y + p, U.pw - 2 * p, th()->text, vis, false);
-        if (pr && !UL.anchored) {   /* drag the title bar to move the panel (kept until the program ends) */
-            uint32_t tid = U.panel_id ^ 0x7177u;
-            if (arc_key_pressed(ARC_MOUSE_LEFT) && mouse_in(x, y, U.pw, h)) { U.drag_panel = tid; arc_v2 m = arc_mouse(); U.drag_off_x = m.x - pr->dx; U.drag_off_y = m.y - pr->dy; }
-            if (U.drag_panel == tid && arc_key_down(ARC_MOUSE_LEFT)) { arc_v2 m = arc_mouse(); pr->dx = m.x - U.drag_off_x; pr->dy = m.y - U.drag_off_y; }
-        }
         U.cy = y + h + p;
     }
     U.cx = x + p; U.col_y0 = U.cy;
+}
+/* 0.10.12 (MechBattleArc): where the player dragged a panel, to keep it between runs; its real rectangle */
+static ui_panel_rec *panel_find(const char *title) {
+    uint32_t id = hash_str(2166136261u, title ? title : "");
+    for (int i = 0; i < UI_MAX_PANELS; i++) if (U.panels[i].used && U.panels[i].id == id) return &U.panels[i];
+    return NULL;
+}
+bool arc_ui_panel_offset(const char *title, float *dx, float *dy) {
+    ui_panel_rec *pr = panel_find(title);
+    if (dx) *dx = pr ? pr->dx : 0;
+    if (dy) *dy = pr ? pr->dy : 0;
+    return pr != NULL;
+}
+void arc_ui_set_panel_offset(const char *title, float dx, float dy) {
+    ui_panel_rec *pr = panel_rec(hash_str(2166136261u, title ? title : ""));
+    if (pr) { pr->dx = dx; pr->dy = dy; }   /* (kept in the window when the panel is next shown) */
+}
+bool arc_ui_panel_rect(const char *title, float *x, float *y, float *w, float *h) {
+    ui_panel_rec *pr = panel_find(title); int i = pr ? (int)(pr - U.panels) : -1;
+    bool ok = i >= 0 && U.prect[i].tick > 0;
+    if (x) *x = ok ? U.prect[i].x : 0;
+    if (y) *y = ok ? U.prect[i].y : 0;
+    if (w) *w = ok ? U.prect[i].w : 0;
+    if (h) *h = ok ? U.prect[i].h : 0;
+    return ok;
+}
+void arc__ui_panels_json(arc_json *j) {   /* frame.ui_panels: each panel shown in the last two ticks */
+    arc_json_arr_k(j, "ui_panels");
+    for (int i = 0; i < UI_MAX_PANELS; i++) {
+        if (!U.panels[i].used || !U.prect[i].tick || U.prect[i].tick + 1 < arc_tick_count()) continue;
+        arc_json_obj(j); arc_json_str_k(j, "title", U.prect[i].title);
+        arc_json_arr_k(j, "rect"); arc_json_num(j, U.prect[i].x); arc_json_num(j, U.prect[i].y); arc_json_num(j, U.prect[i].w); arc_json_num(j, U.prect[i].h); arc_json_end(j);
+        arc_json_arr_k(j, "offset"); arc_json_num(j, U.panels[i].dx); arc_json_num(j, U.panels[i].dy); arc_json_end(j);
+        arc_json_end(j);
+    }
+    arc_json_end(j);
 }
 void arc_ui_end(void) {
     if (!U.in_panel) return;
@@ -267,6 +314,11 @@ void arc_ui_end(void) {
     float h = U.cy - U.py + pad() - th()->spacing * ds();
     if (U.bg_cmd >= 0 && U.bg_cmd < U.ncmd) U.cmds[U.bg_cmd].h = h;
     if (mouse_in(U.px, U.py, U.pw, h)) U.mouse_over_ui = true;
+    if (U.pslot >= 0) {   /* 0.10.12 for arc_ui_panel_rect and frame.ui_panels */
+        int vx = 0, vy = 0; arc__viewport_cur(&vx, &vy, NULL, NULL);
+        U.prect[U.pslot].x = U.px + (float)vx; U.prect[U.pslot].y = U.py + (float)vy; U.prect[U.pslot].w = U.pw; U.prect[U.pslot].h = h;
+        U.prect[U.pslot].tick = arc_tick_count() + 1;
+    }
     U.in_panel = false;
     if (th()->anim > 0) panel_anim_end(h);
     if (UL.anchored) {   /* 0.10.1: remember its height (at full size) for the anchor and the shrink next tick */

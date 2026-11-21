@@ -101,6 +101,7 @@ Pass commands with `--cmd "a; b"`, `--script file.txt`, or interactively with `-
 | `net input HEX` / `net input off` / `net input P HEX` | this machine's input as bytes, overriding the game's `net_input` (P: another player, in a synctest) |
 | `net stop_at T` / `net stats` / `net synctest N [PLAYERS]` | hold the match at match tick T (inputs still flow) / one `ARC net rollback ...` line / offline check: roll back N ticks every tick and compare the state |
 | `net wait tick N\|confirmed N\|waiting\|resumed\|dropped\|alone` | rollback: match tick N reached / every input before N known here and acknowledged by the others / the match waited, ran again, lost a player, has no one else left |
+| `post nan on\|off` | 0.10.12: NaN / Inf scene pixels show magenta (post effects otherwise turn them black); `frame.post.nan_pixels` counts them |
 | `live` / `live run\|hold` / `live speed X` | 0.10.10: a window build driven through `--stdin` from a program (`tools/arc_mcp.py`) keeps drawing while it waits; `run` lets it tick on its own clock (the person can play), `hold` stops it; X 0.25..64 also sets how fast `step` plays there |
 | `echo TEXT` / `quit` / `help` | — |
 | anything else | passed to the game's `command()` callback |
@@ -178,6 +179,9 @@ Write the result a request wants as an ```arc-check block (see `docs/REQUESTS.md
 against the dump (`game.score == 10`), the frame (`frame.meshes[name=coin].on_screen == 3`, `count(...)`, `min(...)`,
 `max(...)`), the UI and the last `sheet` (`sheet.cells[*].filled`).
 It prints PASS/FAIL per line and exits 1 on any failure or `ARC error`. Finish a request only when its block passes.
+0.10.12: every block in a file runs (one fresh game each, named by its `##` heading; `continue` carries on in the
+previous block's game; `--block N`, `--name TEXT`, `--fail-fast`), and relative paths in `args` (`--save-dir`,
+`--record`, `--replay`, `--editor`...) are read from the check file's folder.
 
 ## Doctor: `tools/arc_doctor.py` (0.9.0)
 
@@ -319,6 +323,12 @@ rewinds and replays stay exact. `samples/action/action.c` shows all four togethe
 - **Text:** bake one distance-field font per face, not a file per size:
   `python3 <ARC>/tools/font_bake.py Font.ttf assets/fonts --sizes 48 --sdf`. Then
   `arc_font_draw_ex(f, x, y, px / 48.0f, 0, rgb, text)` at any pixel size. Text starts on whole pixels by default.
+- **Built-in font (0.10.12):** drawn on whole pixels; `arc_text_fit_scale` gives whole sizes from 1 up, so the 8x8
+  font keeps every row (below scale 1 it can't: bake a font for small text). `arc_text_snap_builtin(ARC_TEXT_SNAP_SIZES)`
+  rounds every size of 1 and more too.
+- **Panels the player moves (0.10.12):** save `arc_ui_panel_offset(title, &dx, &dy)` with the game's settings and give
+  it back with `arc_ui_set_panel_offset` at start; place things around `arc_ui_panel_rect` (the real size). Dragged
+  panels keep their title bar on screen.
 - **HUDs that fit every screen:** call `arc_ui_scale_auto(1280, 720, 0.75f, 4)` once per tick, place panels with
   `arc_ui_begin_anchored(name, ARC_ANCHOR_BOTTOM_RIGHT, 10, 10, 220, 0)` (UI units, inside `arc_safe_area()`), and
   end the tick with `arc_ui_require_landscape(NULL)` (or `"TURN SIDEWAYS\nOne line about why"`; it uses the UI's
