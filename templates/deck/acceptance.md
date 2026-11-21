@@ -57,3 +57,22 @@ expect frame.viewports[0].meshes[name=wall].count == 99
 expect editor.undo == 1
 do editor undo; editor off; step 2
 ```
+
+## Models and juice
+
+The Ludo models are drawn, using the terminal pops up a message, and the hidden-droid rule keeps first person clear.
+
+```arc-check
+game .
+expect frame.meshes[name=droid].on_screen == 1
+expect frame.meshes[name=enemy].count >= 1
+expect frame.meshes[name=terminal].count >= 1
+expect frame.meshes[name=lift].count >= 1
+do tp 18 8; use; step 6
+expect frame.texts[*].text contains "DOORS UNLOCKED"
+do step 60
+expect frame.texts[text=DOORS UNLOCKED] missing
+do view 2; step 40
+expect frame.meshes[name=droid] missing
+expect game.view == 2
+```

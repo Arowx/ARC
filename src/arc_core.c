@@ -1662,6 +1662,7 @@ static void do_reset(void) {
     memset(&g_virtual, 0, sizeof g_virtual); memset(g_tap_ticks, 0, sizeof g_tap_ticks); g_mouse_virtual = false; g_vfirst = -1;
     memset(&g_cur, 0, sizeof g_cur); memset(&g_prev, 0, sizeof g_prev);
     g_wait_until = 0; g_hist_len = 0; auto_states_drop_after(0); G.acc = 0;
+    arc_popups_clear();   /* 0.10.14: no popup from the last case floats into the next */
     if (ok) printf("ARC ok reset tick=%llu (%s)\n", (unsigned long long)G.ticks, how_init ? "init again" : "the state after init");
     else printf("ARC error reset: the game has no init to run again\n");
     fflush(stdout);
@@ -2019,6 +2020,7 @@ static bool render_now(void) {
     arc__phase = ARC__PHASE_DRAW; G.app.draw(arc__frame_alpha); arc__phase = 0;
     arc__viewport_close();   /* 0.10.2 */
     arc__scene_after_draw();
+    arc__popups_render();   /* 0.10.14: after the game's 3D, before ARC's UI */
     arc__ui_render(); if (G.app.draw_top) G.app.draw_top(arc__frame_alpha); arc__editor_render(); tl_render(); fps_render(); toast_render();
     arc_prof_end(pd);
     arc__gfx_end(true);
@@ -2614,8 +2616,9 @@ static void sim_tick_body(bool imm) {
     TL.ticking = false;
     if (g_inspector) arc_ui_inspector((float)(arc_width()) - 360.0f * arc_dpi_scale(), 10);
     arc__ui_tick_end();
-    if (imm) { arc__ui_render(); if (G.app.draw_top) G.app.draw_top(arc__frame_alpha); arc__editor_render(); tl_render(); fps_render(); toast_render(); }
+    if (imm) { arc__popups_render(); arc__ui_render(); if (G.app.draw_top) G.app.draw_top(arc__frame_alpha); arc__editor_render(); tl_render(); fps_render(); toast_render(); }
     arc__fx_tick(G.dt);
+    arc__popups_tick(G.dt);   /* 0.10.14 */
     double ta = arc__plat_time();
     arc__audio_tick();
     BG.audio += (arc__plat_time() - ta) * 1000.0;
@@ -2745,6 +2748,7 @@ bool arc__frame(void) {
             arc__phase = ARC__PHASE_DRAW; G.app.draw(arc__frame_alpha); arc__phase = 0;
             arc__viewport_close();   /* 0.10.2 */
             arc__scene_after_draw();
+    arc__popups_render();   /* 0.10.14: after the game's 3D, before ARC's UI */
             arc__ui_render(); if (G.app.draw_top) G.app.draw_top(arc__frame_alpha); arc__editor_render(); tl_render(); fps_render(); toast_render();
             arc_prof_end(pd);
             arc__gfx_end(true);

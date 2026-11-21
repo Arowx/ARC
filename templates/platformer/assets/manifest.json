@@ -1,0 +1,119 @@
+{
+ "version": 1,
+ "assets": {
+  "meshes/block.arcm": {
+   "source": "block.glb",
+   "options": [
+    "--origin",
+    "bottom",
+    "--texture-size",
+    "512",
+    "--fit",
+    "1",
+    "1",
+    "1"
+   ],
+   "prompt": "grass-topped ground block (Ludo create3DModelImage + create3DModel prop)"
+  },
+  "meshes/coin.arcm": {
+   "source": "coin.glb",
+   "options": [
+    "--height",
+    "0.55",
+    "--origin",
+    "centre",
+    "--texture-size",
+    "512"
+   ],
+   "prompt": "shiny gold coin with a star (Ludo create3DModelImage + create3DModel prop)"
+  },
+  "meshes/flag.arcm": {
+   "source": "flag.glb",
+   "options": [
+    "--height",
+    "2.2",
+    "--origin",
+    "bottom",
+    "--texture-size",
+    "512"
+   ],
+   "prompt": "goal flag on a pole (Ludo create3DModelImage + create3DModel prop)"
+  },
+  "meshes/hero.arcm": {
+   "source": "hero.glb",
+   "options": [
+    "--height",
+    "1.1",
+    "--origin",
+    "bottom",
+    "--texture-size",
+    "512"
+   ],
+   "anims": [
+    "idle.glb",
+    "run.glb",
+    "jump.glb",
+    "win.glb"
+   ],
+   "prompt": "cute small adventurer hero (Ludo create3DModelImage + create3DModel rigged mixamo; animate3DModelPreset quaternius clips)"
+  },
+  "meshes/slime.arcm": {
+   "source": "slime.glb",
+   "options": [
+    "--footprint",
+    "0.8",
+    "--origin",
+    "bottom",
+    "--texture-size",
+    "512"
+   ],
+   "prompt": "cute purple slime blob enemy (Ludo create3DModelImage + create3DModel prop)"
+  },
+  "meshes/spikes.arcm": {
+   "source": "spikes.glb",
+   "options": [
+    "--origin",
+    "bottom",
+    "--texture-size",
+    "512",
+    "--fit",
+    "0.95",
+    "0",
+    "0.95"
+   ],
+   "prompt": "row of metal floor spikes (Ludo create3DModelImage + create3DModel prop)"
+  },
+  "music/music.mp3": {
+   "made": "Ludo createMusic, then ffmpeg to MP3 (stereo, 112 kbit/s)",
+   "prompt": "cheerful platformer loop"
+  },
+  "sfx/check.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "checkpoint bell"
+  },
+  "sfx/coin.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "coin chime (pitched up as coins chain)"
+  },
+  "sfx/hurt.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "cartoon ouch"
+  },
+  "sfx/jump.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "cartoon jump boing"
+  },
+  "sfx/stomp.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "squishy slime stomp"
+  },
+  "sfx/win.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "level clear jingle"
+  },
+  "textures/earth.jpg": {
+   "made": "Ludo createImage, cropped (0.24-0.44 x, 0.52-0.72 y) and scaled to 512 px",
+   "prompt": "soil tile, cropped from a ground block render"
+  }
+ }
+}

@@ -11,7 +11,7 @@
  *   tick()           input, movement, firing, collisions, waves, combo, pickups, game over. draw() only draws.
  *   juice            hit-stop (G.hitstop freezes the rules for a few ticks on kills), camera shake (rig), hit
  *                    flashes (whiten), spawn pop-in (ease_out_back), recoil, particles (FX_*), floating score
- *                    numbers, a rolling score counter, bloom; sounds play at slightly varied pitch (play_var).
+ *                    numbers (arc_popup_text), a rolling score counter, bloom; sounds at varied pitch (arc_play_var).
  *   assets/          models, sounds and music made with Ludo (ludo.ai) and imported with tools/arc_import.py.
  *                    The player is a rigged model with idle / run / hit / death clips (assets/meshes/player.arca).
  *   dump()           phase, wave, score, combo, lives, player position and aim, power-up, counts of each thing.
@@ -30,7 +30,6 @@
 #define MAX_ENEMIES 96
 #define MAX_CRYSTALS 8
 #define MAX_CRATES 6
-#define MAX_POPUPS 16
 enum { PHASE_PLAY, PHASE_BETWEEN, PHASE_DYING, PHASE_OVER };
 enum { E_DRONE, E_BEETLE, E_BOSS, E_KINDS };
 enum { P_NONE, P_SPREAD, P_RAPID, P_SHIELD, P_KINDS };
@@ -57,7 +56,6 @@ typedef struct {
 } Enemy;
 typedef struct { bool on; int kind, age; arc_v2 p; } Crystal;
 typedef struct { bool on; int hp, flash; arc_v2 p; } Crate;
-typedef struct { bool on; int age, value; arc_v3 p; uint32_t rgb; } Popup;
 typedef struct {
     int phase, wave, score, lives, kills, best;
     int combo, combo_timer;           /* kills in a row, ticks left to extend it */
@@ -67,13 +65,11 @@ typedef struct {
     int power, power_ticks; bool shield;
     float anim_t, run_w, hit_t, death_t;   /* the player's animation clocks and the run / idle blend */
     float shown_score;                /* the HUD counter rolls up to score */
-    uint32_t juice_rng;               /* for looks only (sound pitch): the rules' arc_rand_* stays untouched */
     bool god;
     Bullet b[MAX_BULLETS];
     Enemy e[MAX_ENEMIES];
     Crystal c[MAX_CRYSTALS];
     Crate k[MAX_CRATES];
-    Popup pop[MAX_POPUPS];
 } Game;
 static Game G;
 
@@ -106,18 +102,11 @@ static const arc_fx FX_SPAWN = { .life = 0.5f, .speed = 3, .spread = 3.14159f, .
                                  .glow = 2, .additive = true, .gravity = { 0, 2, 0 }, .burst = 14 };
 static arc_fx FX_PICKUP[P_KINDS];   /* one per power-up colour, filled in init */
 
-/* ---- small juice helpers ---- */
-static float juice_rand(void) { G.juice_rng = G.juice_rng * 1664525u + 1013904223u; return (float)(G.juice_rng >> 8) / 16777216.0f; }
-static void play_var(arc_sound s, float vol, float x) {   /* a sound at a slightly different pitch each time, panned by x */
-    arc_play_ex(s, vol, arc_clampf(x / ARENA, -1, 1) * 0.6f, 0.9f + 0.2f * juice_rand(), false);
-}
+/* ---- small juice helpers (ARC's juice kit: arc_play_var, arc_popup_text, arc_yaw_to) ---- */
+static void play_var(arc_sound s, float vol, float x) { arc_play_var(s, vol, arc_clampf(x / ARENA, -1, 1) * 0.6f, 0.1f); }   /* panned by x */
 static void shake(float amount) { arc_cam_rig_shake(&rig, amount); }
 static arc_v3 at(arc_v2 p, float y) { return arc_v3_make(p.x, y, p.y); }
-static void popup(arc_v2 p, int value, uint32_t rgb) {
-    int near = 0;   /* stack popups that land close together, so a chain of kills reads as a column of numbers */
-    for (int i = 0; i < MAX_POPUPS; i++) if (G.pop[i].on && G.pop[i].age < 25 && fabsf(G.pop[i].p.x - p.x) < 2 && fabsf(G.pop[i].p.z - p.y) < 2) near++;
-    for (int i = 0; i < MAX_POPUPS; i++) if (!G.pop[i].on) { G.pop[i] = (Popup){ true, 0, value, at(p, 1.2f + 0.7f * (float)near), rgb }; return; }
-}
+static void popup(arc_v2 p, int value, uint32_t rgb) { arc_popup_text(at(p, 1.2f), rgb, 2.5f, value ? arc_fmt("+%d", value) : "POWER!"); }
 
 static int count_enemies(void) { int n = 0; for (int i = 0; i < MAX_ENEMIES; i++) n += G.e[i].on; return n; }
 static int count_kind(int kind) { int n = 0; for (int i = 0; i < MAX_ENEMIES; i++) n += G.e[i].on && G.e[i].kind == kind; return n; }
@@ -155,8 +144,8 @@ static void start_wave(int n) {
     arc_event("wave", "\"wave\":%d", n);
 }
 static void reset(void) {
-    int best = G.best; uint32_t jr = G.juice_rng;
-    memset(&G, 0, sizeof G); G.lives = 3; G.best = best; G.juice_rng = jr ? jr : 12345u;
+    int best = G.best;
+    memset(&G, 0, sizeof G); G.lives = 3; G.best = best;
     start_wave(1);
 }
 static void fire_one(float ang) {
@@ -332,7 +321,6 @@ static void tick_crystals(void) {
 }
 static void tick(void) {
     if (arc_key_pressed(ARC_KEY_R)) reset();
-    for (int i = 0; i < MAX_POPUPS; i++) if (G.pop[i].on && ++G.pop[i].age > 50) G.pop[i].on = false;
     G.shown_score += ((float)G.score - G.shown_score) * 0.2f; if (fabsf((float)G.score - G.shown_score) < 1) G.shown_score = (float)G.score;
     if (G.hurt_flash > 0) G.hurt_flash--;
     for (int i = 0; i < MAX_CRATES; i++) if (G.k[i].flash > 0) G.k[i].flash--;
@@ -364,7 +352,7 @@ static void draw_player(void) {
     if (blink) return;
     float back = G.recoil > 0 ? 0.08f * (float)G.recoil / 4.0f : 0;   /* kick back when firing */
     arc_v2 p = arc_v2_sub(G.pos, arc_v2_make(cosf(G.aim) * back, sinf(G.aim) * back));
-    float yaw = 1.5707963f - G.aim;   /* the model's front is +z; aim 0 is +x */
+    float yaw = arc_yaw_to(cosf(G.aim), sinf(G.aim));   /* aim 0 is +x */
     arc_anim_layer L[3]; int n = 0;
     if (G.phase == PHASE_DYING || G.phase == PHASE_OVER) {
         L[n++] = (arc_anim_layer){ clip_death, G.death_t, 1, false };
@@ -404,8 +392,8 @@ static void draw(float alpha) {
         float pop = e->age < 20 ? arc_ease_out_back((float)e->age / 20.0f) : 1.0f;      /* pop in */
         float bob = e->kind == E_DRONE ? 0.5f + 0.12f * sinf((float)(e->age + k * 7) * 0.12f) : 0;
         float rev = e->charge > 0 ? 0.06f * sinf((float)e->charge * 1.7f) : 0;            /* shudder while revving */
-        arc_v2 to = arc_v2_sub(G.pos, e->p); float yaw = atan2f(to.x, to.y);
-        if (e->charge < 0) yaw = atan2f(e->dash.x, e->dash.y);
+        arc_v2 to = arc_v2_sub(G.pos, e->p); float yaw = arc_yaw_to(to.x, to.y);
+        if (e->charge < 0) yaw = arc_yaw_to(e->dash.x, e->dash.y);
         arc_v3 sc = arc_v3_make(s * pop * (1 + rev), s * pop * (1 - rev), s * pop * (1 + rev));
         if (e->age < 30)   /* where it is coming in: a ring that shrinks onto it */
             arc_draw_marker(&(arc_marker){ .shape = ARC_MARK_RING, .x = e->p.x, .z = e->p.y, .size = 2.5f * s * (1.0f - (float)e->age / 40.0f),
@@ -419,7 +407,7 @@ static void draw(float alpha) {
     }
     for (int i = 0; i < MAX_BULLETS; i++) if (G.b[i].on) {
         const Bullet *b = &G.b[i];
-        arc_draw_mesh_ex(m_bullet, arc_m4_trs_y(at(b->p, 0.6f), atan2f(b->v.x, b->v.y), arc_v3_make(0.16f, 0.16f, 0.55f)), 0xFFE060, 3);
+        arc_draw_mesh_ex(m_bullet, arc_m4_trs_y(at(b->p, 0.6f), arc_yaw_to(b->v.x, b->v.y), arc_v3_make(0.16f, 0.16f, 0.55f)), 0xFFE060, 3);
     }
     for (int i = 0; i < MAX_CRYSTALS; i++) if (G.c[i].on) {
         const Crystal *c = &G.c[i]; uint32_t rgb = POWERS[c->kind].rgb;
@@ -435,13 +423,6 @@ static void draw(float alpha) {
 
     /* HUD */
     float W = (float)arc_width(), H = (float)arc_height();
-    for (int i = 0; i < MAX_POPUPS; i++) if (G.pop[i].on) {   /* floating score numbers */
-        const Popup *p = &G.pop[i]; arc_v2 s; float t = (float)p->age / 50.0f;
-        if (!arc_world_to_screen(arc_v3_make(p->p.x, p->p.y + t * 1.2f, p->p.z), &s)) continue;
-        float sc = 2.0f + arc_ease_out_back(arc_clampf(t * 4, 0, 1));
-        uint32_t rgb = p->rgb;
-        arc_draw_text_ex(s.x, s.y, sc, rgb, ARC_TEXT_CENTER | ARC_TEXT_OUTLINE, p->value ? arc_fmt("+%d", p->value) : "POWER!");
-    }
     arc_draw_textf(12, 10, 3, 0xFFFFFF, "SCORE %d", (int)(G.shown_score + 0.5f));
     arc_draw_textf(12, 40, 2, 0xB0B8C8, "WAVE %d   LIVES %d   BEST %d", G.wave, G.lives, G.best);
     if (G.combo > 1) {

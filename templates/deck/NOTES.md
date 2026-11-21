@@ -17,6 +17,18 @@
   F mirrors); O shows the deck above or below; T test-plays from the pointer (`ed_playtest`; F2 comes back);
   `ed_validate` reports a deck without a start or lift. CTRL+S writes `decks.arclvl`; with `--hot` a changed file
   reloads.
+- **Looks:** walls and floor are textured cubes (`wall.jpg`, `floor.jpg`). Door, lift, terminal and energiser models
+  are imported into a 1 x 1 x 1 box (`--fit 1 1 1 --origin centre`) and scaled per use. The droid (player) and the
+  security robots are about 0.8 and 0.9 tall with their feet at 0.
+- **Juice:** shots spark (`FX_SPARKS`); kills blast, smoke and throw parts (`FX_BLAST`, `FX_SMOKE`, `FX_PARTS`) with
+  shake. A red flash shows when you are hurt. A "!" pops over a robot that spots you, and "DOORS UNLOCKED",
+  "REPAIRED" and "DESTROYED" pop up too. Bloom is on. The droid fades as the follow camera is pulled close by a
+  wall, and is hidden in first person.
+- **Assets:** made with Ludo (ludo.ai). `assets/manifest.json` lists every file: how it was made, a description, and
+  for models the `arc_import.py` options. Put the source GLBs in `art/` and
+  `python3 <ARC>/tools/arc_import.py --manifest --game .` re-imports every model the same way. Import new models
+  with `--prompt "..."` and they are recorded too. Models face +z (check the green FRONT +Z arrow in
+  `build/import/NAME.png`).
 - Agent commands: `deck N`, `tp X Y` (cells), `open_doors`, `clear`, `use`, `lift up|down`, `fire`, `face DEG`,
   `view N`, `save`, `load`, `restart`.
-- Tests: `tests/acceptance.md`.
+- Tests: `tests/acceptance.md` has two blocks: the rules, and models and juice.

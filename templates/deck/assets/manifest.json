@@ -1,0 +1,129 @@
+{
+ "version": 1,
+ "assets": {
+  "meshes/door.arcm": {
+   "source": "door.glb",
+   "options": [
+    "--origin",
+    "centre",
+    "--texture-size",
+    "512",
+    "--fit",
+    "1",
+    "1",
+    "1"
+   ],
+   "prompt": "sliding sci-fi bulkhead door panel, yellow hazard stripes (Ludo create3DModelImage + create3DModel prop)"
+  },
+  "meshes/droid.arcm": {
+   "source": "dplayer.glb",
+   "options": [
+    "--height",
+    "0.8",
+    "--origin",
+    "bottom",
+    "--texture-size",
+    "512"
+   ],
+   "prompt": "small friendly green maintenance droid (Ludo create3DModelImage + create3DModel prop)"
+  },
+  "meshes/energiser.arcm": {
+   "source": "energiser.glb",
+   "options": [
+    "--origin",
+    "centre",
+    "--texture-size",
+    "512",
+    "--fit",
+    "1",
+    "1",
+    "1"
+   ],
+   "prompt": "sci-fi space station energiser (Ludo create3DModelImage + create3DModel prop)"
+  },
+  "meshes/lift.arcm": {
+   "source": "lift.glb",
+   "options": [
+    "--origin",
+    "centre",
+    "--texture-size",
+    "512",
+    "--fit",
+    "1",
+    "1",
+    "1"
+   ],
+   "prompt": "sci-fi space station lift (Ludo create3DModelImage + create3DModel prop)"
+  },
+  "meshes/security.arcm": {
+   "source": "security.glb",
+   "options": [
+    "--height",
+    "0.9",
+    "--origin",
+    "bottom",
+    "--texture-size",
+    "512"
+   ],
+   "prompt": "boxy sci-fi security robot sentry (Ludo create3DModelImage + create3DModel prop)"
+  },
+  "meshes/terminal.arcm": {
+   "source": "terminal.glb",
+   "options": [
+    "--origin",
+    "centre",
+    "--texture-size",
+    "512",
+    "--fit",
+    "1",
+    "1",
+    "1"
+   ],
+   "prompt": "sci-fi space station terminal (Ludo create3DModelImage + create3DModel prop)"
+  },
+  "music/music.mp3": {
+   "made": "Ludo createMusic, then ffmpeg to MP3 (stereo, 112 kbit/s)",
+   "prompt": "tense ambient sci-fi loop"
+  },
+  "sfx/alert.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "alert blip when spotted"
+  },
+  "sfx/boom.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "droid explodes"
+  },
+  "sfx/charge.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "energiser recharge"
+  },
+  "sfx/door.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "sliding bulkhead door"
+  },
+  "sfx/eshot.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "security droid shot"
+  },
+  "sfx/lift.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "lift hum"
+  },
+  "sfx/shot.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "droid laser shot"
+  },
+  "sfx/terminal.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "terminal beeps"
+  },
+  "textures/floor.jpg": {
+   "made": "Ludo createImage (a seamless tile), cropped and scaled to 512 px",
+   "prompt": "metal deck plating tile"
+  },
+  "textures/wall.jpg": {
+   "made": "Ludo createImage (a seamless tile), cropped and scaled to 512 px",
+   "prompt": "sci-fi wall panel tile"
+  }
+ }
+}

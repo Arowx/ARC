@@ -530,6 +530,8 @@ double arc__plat_time(void);
 
 /* particles (arc_fx.c) */
 void arc__fx_tick(float dt);
+void arc__popups_tick(float dt);   /* 0.10.14 */
+void arc__popups_render(void);
 size_t arc__fx_state(arc_writer *w); bool arc__fx_state_read(arc_reader *r, bool commit);
 size_t arc__decal_state(arc_writer *w); bool arc__decal_state_read(arc_reader *r, bool commit);   /* 0.7, after the UI's */
 void arc__fx_reset(void);

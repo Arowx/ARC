@@ -132,9 +132,11 @@ you found replays headless. `docs/MCP.md` has the details.
 agents, tunables, `save_state`/`load_state` (so rewind and the timeline work), `tests/acceptance.md` with checks of its
 rules (`python3 <ARC>/tools/arc_check.py tests/acceptance.md`, which builds the game with its own script: `game .`), a
 `release.json`, and notes on its structure at the end of the game's `AGENTS.md`. Grow the game from there and keep the
-acceptance checks passing; add a block for each feature. 0.10.14: `shooter` is a finished mini-game (Neon Arena) with
-models, animation, sound, music, particles and juice made with Ludo, copied into the game's `assets/`; its `NOTES.md`
-lists how each asset was imported. The other templates still use built-in shapes.
+acceptance checks passing; add a block for each feature. 0.10.14: every template is a finished mini-game (Neon Arena, Toy Skirmish, Hop Hero, a kart
+racer, Twenty-One, the deck crawler) with models, animation, sound, music, particles and juice made with Ludo, copied
+into the game's `assets/`. `assets/manifest.json` says how each file was made and imported, and the game's `NOTES.md`
+explains the code. Swap the art by importing over a file with the same name, or grow the rules and keep the checks
+passing.
 
 ## Seeing the screen without pictures: `frame` (0.9.0)
 
@@ -179,6 +181,19 @@ as for games with `draw()`.
   splat map with `arc_terrain_set_splat(t, rgba)` (`arc_terrain_splat_res(t)` a side), not with `arc_texture_update`
   on `arc_terrain_splat_map`: only `set_splat` updates the weights that `arc_terrain_layer_weight`, paint and scatter
   read.
+
+## Juice and asset manifests (0.10.14)
+
+- **Floating text:** `arc_popup_text(pos, rgb, scale, "+10")` (or `arc_popup_text_2d(x, y, ...)` in pixels) in tick
+  when something happens. ARC ages and draws it after `draw()`, so it is looks only; popups close together stack. A
+  test sees it in `frame.texts` for about 50 ticks: `expect frame.texts[*].text contains "+10"`, then
+  `expect frame.texts[text=+10] missing`.
+- **Varied sounds:** `arc_play_var(s, volume, pan, 0.1f)` plays at a pitch within 10%; it never draws from the game's
+  `arc_rand_*`, so replays stay exact.
+- **Facing:** models face +z. `arc_m4_trs_y(pos, arc_yaw_to(dx, dz), scale)` turns one toward (dx, dz).
+- **Recording how assets were made:** import with `--prompt "what you asked the generator for"`. Each import goes into
+  `assets/manifest.json` with its options and clips; `arc_import.py --manifest --game . --sources art` re-imports
+  every model the same way. Check the green FRONT +Z arrow in the preview before using a model.
 
 ## Asking ARC for a change (0.10.13)
 

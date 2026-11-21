@@ -2,15 +2,47 @@
 
 Version numbers follow `ARC_VERSION` in `include/arc.h`. Games can check it at compile time.
 
-## Unreleased (0.10.14, in progress): template games with art and juice
+## 0.10.14 — 21 Nov 2026: template games with art and juice, a juice kit, asset manifests
 
-- **The shooter template is a finished mini-game: Neon Arena.** It has a rigged robot with idle, run, hit and death
-  clips, drones, armoured beetles that charge (with a warning arrow), a boss every 5th wave, combos, power-ups
-  (spread, rapid, shield), breakable crates, a textured floor and modular walls, Ludo-made sound effects and music,
-  and juice: hit-stop, shake, hit flashes, pop-ins, particles, floating scores, a rolling score counter and bloom.
-  Its acceptance checks have 4 blocks (37 checks). The other five templates follow after review.
-- `tools/new_game.py --template` copies the template's `assets/` folder into the new game.
+Self-test 2700 (11 new, `tests/test_v1014.c`). All six templates are finished mini-games with Ludo-made models,
+animation, sound, music and particles. Their acceptance checks grow to 13 blocks (169 checks).
+
+- **Six finished template games.** `tools/new_game.py --template X` now starts from a small game, not a sketch. Each
+  one keeps its rules, `dump()`, agent commands and save state, and its `NOTES.md` explains how it is built.
+  - **shooter, Neon Arena:** a rigged robot (idle, run, hit, death); drones, charging beetles and a boss every 5th
+    wave; combos, power-ups and crates; hit-stop and bloom.
+  - **tactics, Toy Skirmish:** knights and an archer against orcs and a goblin archer, all rigged and animated (idle,
+    walk, attack, hit, death). The rules resolve at once and the animation follows: units walk their path tile by tile,
+    arrows fly, and hits land a moment later with a damage number. Ruins and trees.
+  - **platformer, Hop Hero:** an animated hero (idle, run, jump, win), slimes you stomp, and spinning coins whose chime
+    climbs as you chain them. Squash and stretch, dust, a leading camera and confetti.
+  - **racer:** four karts (three AIs), boost pads, a textured road built from the track's own points, cones, tyre
+    stacks and a start arch. Engine pitch follows speed (a QOA loop), skids squeal and smoke, and the field of view
+    widens with speed.
+  - **cards, Twenty-One:** felt, a card back, suit art and chips. Cards fly from the shoe and flip, the hole card
+    turns, and chips slide to the winner; "+20" / "-10" popups.
+  - **deck:** textured walls and floors; door, lift, terminal and energiser models; a droid player; security robots.
+    Sparks, blasts, smoke and parts, a "!" when a robot spots you, bloom. The droid fades when a wall pulls the follow
+    camera close, and is hidden in first person.
+- **The juice kit (`ARC_HAS_JUICE`):** three calls every template had written by hand.
+  - `arc_popup_text(pos, rgb, scale, text)` / `arc_popup_text_2d(x, y, ...)`: floating text for scores, damage and
+    "+1 UP". ARC ages it, pops it in and draws it after the game's `draw()`, so it is looks only. Popups close
+    together stack into a column. It shows in `frame.texts`. Also `arc_popups_clear`, `arc_popup_count`; `reset`
+    clears them.
+  - `arc_play_var(s, volume, pan, pitch_var)`: the same sound at a slightly different pitch each time. The pitch
+    comes from ARC's own generator, so the game's `arc_rand_*` sequence and its replays are untouched.
+  - `arc_yaw_to(dx, dz)`: the yaw that turns a model (front +z) toward a direction, for `arc_m4_trs_y`.
+- **Asset manifests:** `tools/arc_import.py` records every import in the game's `assets/manifest.json`: the source,
+  the options, the clips and `--prompt "..."` (how the asset was made). `arc_import.py --manifest --game .`
+  re-imports every model from `art/` (or `--sources DIR`) the same way, byte for byte. Entries made outside
+  `arc_import` (sounds, painted textures) carry a `made` note and are skipped. The templates' manifests list every
+  file.
+- **Model previews show the front:** `build/import/NAME.png` has a green arrow labelled FRONT +Z, so a model that
+  faces the wrong way is plain to see before it is used.
 - `tools/arc_import.py --texture-size N` shrinks a model's textures (512 suits props: a third of the size).
+- `tools/arc_check.py` gives each check run its own `--save-dir` (a temporary folder, removed afterwards) unless the
+  block sets one, so saves left by an earlier run (a high score) no longer change a check's result.
+- `tools/new_game.py --template` copies the template's `assets/` folder into the new game.
 
 ## 0.10.13 — 21 Nov 2026: glowing 2D lines in bulk, a safe-area offset, music loop sections, a terrain colour map
 

@@ -1,0 +1,49 @@
+{
+ "version": 1,
+ "assets": {
+  "music/music.mp3": {
+   "made": "Ludo createMusic, then ffmpeg to MP3 (stereo, 112 kbit/s)",
+   "prompt": "relaxed lounge jazz loop"
+  },
+  "sfx/chips.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "casino chips clack"
+  },
+  "sfx/deal.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "a card slides onto felt"
+  },
+  "sfx/flip.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "a card flips"
+  },
+  "sfx/lose.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "soft lose tone"
+  },
+  "sfx/shuffle.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "deck shuffle"
+  },
+  "sfx/win.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg to MP3 (mono, 96 kbit/s)",
+   "prompt": "small win jingle"
+  },
+  "textures/card_back.png": {
+   "made": "Ludo createImage, cropped to the card",
+   "prompt": "ornate card back"
+  },
+  "textures/chip.png": {
+   "made": "Ludo createImage, cut out with a circular mask",
+   "prompt": "a casino chip"
+  },
+  "textures/felt.jpg": {
+   "made": "Ludo createImage (a seamless tile), cropped and scaled to 512 px",
+   "prompt": "green card-table felt tile"
+  },
+  "textures/suits.png": {
+   "made": "Ludo createImage, cut out with a flood fill from the edges and a slight blur",
+   "prompt": "the four suits in a row (spades, hearts, diamonds, clubs), 128 px cells"
+  }
+ }
+}

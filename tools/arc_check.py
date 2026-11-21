@@ -33,7 +33,7 @@ result (`sheet.cells[*].filled`, `.label_ink`: shares of the cell / label row un
 != < <= > >= contains exists missing. Values: numbers, "strings", true, false, null.
 Exit code 0 when every check passes. The game's `ARC error` lines fail the run; `ARC hint` lines are shown.
 """
-import argparse, json, os, re, shlex, subprocess, sys
+import argparse, json, os, re, shlex, shutil, subprocess, sys, tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -282,8 +282,15 @@ def run_group(exe, args, st, a):
     exe = os.path.abspath(exe)
     if not os.path.exists(exe) and os.path.exists(exe + '.exe'): exe += '.exe'
     if not os.path.exists(exe): sys.exit('arc_check: no such game: ' + exe)
-    cmd = [exe, '--headless'] + fix_args(args, os.path.dirname(os.path.abspath(a.checks))) + ['--cmd', '; '.join(st['cmds'] + ['quit'])]
-    r = run_game(cmd, os.path.dirname(os.path.abspath(exe)) or '.')
+    fixed = fix_args(args, os.path.dirname(os.path.abspath(a.checks)))
+    tmp_saves = None
+    if not any(x == '--save-dir' or x.startswith('--save-dir=') for x in fixed):   # 0.10.14: each game starts with no saves (a best score from one block can't leak into the next)
+        tmp_saves = tempfile.mkdtemp(prefix='arc_check_saves_'); fixed = fixed + ['--save-dir', tmp_saves]
+    cmd = [exe, '--headless'] + fixed + ['--cmd', '; '.join(st['cmds'] + ['quit'])]
+    try:
+        r = run_game(cmd, os.path.dirname(os.path.abspath(exe)) or '.')
+    finally:
+        if tmp_saves: shutil.rmtree(tmp_saves, ignore_errors=True)
     snaps = {'dump': [], 'frame': [], 'ui': [], 'sheet': []}
     errors, hints = [], []
     for l in r.stdout.splitlines():
