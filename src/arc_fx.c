@@ -694,3 +694,46 @@ bool arc__decal_state_read(arc_reader *r, bool commit) {
     r->pos += 4; arc_read(r, &DC.seq, sizeof DC.seq); arc_read(r, DC.d, sizeof DC.d); DC.touched = true;
     return true;
 }
+
+/* ---- 0.10.14 juice: floating text (score popups, "+1 UP", damage numbers). Looks only: ARC ages and draws them
+   after the game's draw(), so they never touch the game's state; they show in `frame` like any text. ---- */
+#define ARC__MAX_POPUPS 64
+typedef struct { bool on, screen; float age, life, scale; arc_v3 p; uint32_t rgb; char text[32]; } fx_popup;   /* screen: p.x, p.y are pixels */
+static fx_popup g_popup[ARC__MAX_POPUPS];
+static void popup_add(arc_v3 pos, bool screen, uint32_t rgb, float scale, const char *text);
+void arc_popup_text(arc_v3 pos, uint32_t rgb, float scale, const char *text) { popup_add(pos, false, rgb, scale, text); }
+/* 0.10.14: the same for 2D games: (x, y) in screen pixels; it rises 60 pixels */
+void arc_popup_text_2d(float x, float y, uint32_t rgb, float scale, const char *text) { popup_add(arc_v3_make(x, y, 0), true, rgb, scale, text); }
+static void popup_add(arc_v3 pos, bool screen, uint32_t rgb, float scale, const char *text) {
+    if (!text || !*text) return;
+    if (scale <= 0) scale = 2.0f;
+    int near = 0, slot = -1;
+    for (int i = 0; i < ARC__MAX_POPUPS; i++) {
+        fx_popup *q = &g_popup[i];
+        if (!q->on) { if (slot < 0) slot = i; continue; }
+        if (q->age < 0.45f && q->screen == screen && (screen ? fabsf(q->p.x - pos.x) < 60 && fabsf(q->p.y - pos.y) < 40
+                                                            : fabsf(q->p.x - pos.x) < 1.5f && fabsf(q->p.z - pos.z) < 1.5f)) near++;
+    }
+    if (slot < 0) { slot = 0; for (int i = 1; i < ARC__MAX_POPUPS; i++) if (g_popup[i].age > g_popup[slot].age) slot = i; }   /* full: the oldest goes */
+    fx_popup *q = &g_popup[slot];
+    q->on = true; q->screen = screen; q->age = 0; q->life = 0.85f; q->scale = scale; q->rgb = rgb;
+    q->p = screen ? arc_v3_make(pos.x, pos.y - 9.0f * scale * (float)near, 0)     /* a chain of them stacks into a column */
+                  : arc_v3_make(pos.x, pos.y + 0.55f * (float)near, pos.z);
+    size_t n = strlen(text); if (n > sizeof q->text - 1) n = sizeof q->text - 1;
+    memcpy(q->text, text, n); q->text[n] = 0;
+}
+void arc_popups_clear(void) { memset(g_popup, 0, sizeof g_popup); }
+int  arc_popup_count(void) { int n = 0; for (int i = 0; i < ARC__MAX_POPUPS; i++) n += g_popup[i].on; return n; }
+void arc__popups_tick(float dt) {
+    for (int i = 0; i < ARC__MAX_POPUPS; i++) if (g_popup[i].on && (g_popup[i].age += dt) >= g_popup[i].life) g_popup[i].on = false;
+}
+void arc__popups_render(void) {
+    for (int i = 0; i < ARC__MAX_POPUPS; i++) if (g_popup[i].on) {
+        const fx_popup *q = &g_popup[i]; float t = q->age / q->life; arc_v2 s;
+        if (q->screen) s = arc_v2_make(q->p.x, q->p.y - t * 60.0f);
+        else if (!arc_world_to_screen(arc_v3_make(q->p.x, q->p.y + t * 1.2f, q->p.z), &s)) continue;
+        float sc = q->scale * (0.5f + 0.5f * arc_ease_out_back(arc_minf(1.0f, t * 5.0f)));      /* pops up */
+        if (t > 0.8f) sc *= (1.0f - t) / 0.2f;                                                     /* and shrinks away */
+        if (sc > 0.2f) arc_draw_text_ex(s.x, s.y, sc, q->rgb, ARC_TEXT_CENTER | ARC_TEXT_MIDDLE | ARC_TEXT_OUTLINE, q->text);
+    }
+}

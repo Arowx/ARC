@@ -45,6 +45,12 @@ static void draw(float alpha) {
         float g = r * 2; float step = g / 8;
         arc_draw_grid(g, step, 0x8890A0);
         arc_draw_mesh(mesh, arc_m4_identity(), 0xFFFFFF);
+        /* 0.10.14: an arrow on the ground along +z, the way ARC's models face (arc_m4_trs_y yaw 0, cam rigs, arc_yaw_to):
+           a model whose face is not at the arrow's tip needs arc_import --yaw */
+        float al = (hi.z - lo.z) * 0.5f + r * 0.6f;
+        arc_draw_marker(&(arc_marker){ .shape = ARC_MARK_ARROW, .x = c.x, .z = c.z, .x2 = c.x, .z2 = c.z + al, .size = r * 0.08f,
+                                       .fill_rgb = 0x40E060, .fill_alpha = 0.85f, .on_top = true, .y = lo.y,
+                                       .label = "FRONT +Z", .label_rgb = 0x60FF80, .label_height = 0.01f });
         arc_draw_textf(10, 10, 2, 0xFFFFFF, "%s", path);
         arc_draw_textf(10, 30, 2, 0xC0C8D8, "%d tris  %.2f x %.2f x %.2f", arc_mesh_triangles(mesh), d.x, d.y, d.z);
     } else if (kind == 2) {

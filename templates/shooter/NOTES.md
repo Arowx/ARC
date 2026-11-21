@@ -1,6 +1,6 @@
 ## This game started from the shooter template (Neon Arena)
 
-- **State:** `Game G` holds fixed pools (`MAX_BULLETS`, `MAX_ENEMIES`, `MAX_CRYSTALS`, `MAX_CRATES`, `MAX_POPUPS`), and
+- **State:** `Game G` holds fixed pools (`MAX_BULLETS`, `MAX_ENEMIES`, `MAX_CRYSTALS`, `MAX_CRATES`), and
   `save_state`/`load_state` copy it whole. Keep it pointer-free when you add fields.
 - **Content tables:**
   - `KINDS[]` holds each enemy kind's speed, hit points, score, radius and model scale;
@@ -15,7 +15,8 @@
     particles keep going.
   - `shake()` is the camera rig's trauma.
   - `whiten` gives hit flashes; `arc_ease_out_back` drives pop-ins, banners and popups.
-  - `play_var()` plays a sound at a slightly varied pitch, from `G.juice_rng`, so the rules' `arc_rand_*` is untouched.
+  - `play_var()` calls ARC's `arc_play_var` (a slightly varied pitch, from ARC's own random generator for looks, so the
+    rules' `arc_rand_*` is untouched); `popup()` calls `arc_popup_text` (floating numbers that ARC ages and draws).
   - The `FX_*` tables are the particle effects; `arc_draw_marker` draws the player ring, spawn rings and charge arrows.
 - **Assets:** the files in `assets/` were made with Ludo (ludo.ai) and imported with `tools/arc_import.py`. Their
   sizes and turns:
@@ -29,7 +30,8 @@
   | crate | `--footprint 1.2` |
   | wall | `--fit 2.0 0.9 0.8` |
 
-  All use `--texture-size 512`. The floor is a 512 px tile repeated with `uv_scale`.
+  All use `--texture-size 512`. The floor is a 512 px tile repeated with `uv_scale`. `assets/manifest.json` records
+  every file (sounds, music and the floor too); `arc_import.py --manifest --game .` re-imports the models from `art/`.
 - **Aim and facing:** aim follows the mouse only when the mouse moves, so the `aim DEG` command holds in scripted runs.
   Models face +z: `yaw = atan2f(dx, dz)`.
 - **Agent commands:** `aim DEG`, `fire`, `wave N`, `spawn N [kind]`, `spawn_at X Z [drone|beetle|boss]` (awake at

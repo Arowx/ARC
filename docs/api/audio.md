@@ -27,6 +27,13 @@ pitch: playback speed (1 = normal, 2 = an octave up); loop: repeat until arc_voi
 
 ```c
 ARC_API arc_voice arc_play_ex(arc_sound s, float volume, float pan, float pitch, bool loop);
+```
+
+0.10.14: pitch 1 +/- pitch_var at random (0.1 = 10%), so repeated shots, hits and footsteps don't sound the same.
+   The randomness is ARC's own, for looks: the game's arc_rand_* sequence and its replays are untouched
+
+```c
+ARC_API arc_voice arc_play_var(arc_sound s, float volume, float pan, float pitch_var);
 ARC_API void arc_voice_stop(arc_voice v);
 ARC_API void arc_voice_set_volume(arc_voice v, float volume);
 ARC_API void arc_voice_set_pan(arc_voice v, float pan);
