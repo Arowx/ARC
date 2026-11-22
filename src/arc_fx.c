@@ -707,18 +707,18 @@ void arc_popup_text_2d(float x, float y, uint32_t rgb, float scale, const char *
 static void popup_add(arc_v3 pos, bool screen, uint32_t rgb, float scale, const char *text) {
     if (!text || !*text) return;
     if (scale <= 0) scale = 2.0f;
-    int near = 0, slot = -1;
+    int stacked = 0, slot = -1;
     for (int i = 0; i < ARC__MAX_POPUPS; i++) {
         fx_popup *q = &g_popup[i];
         if (!q->on) { if (slot < 0) slot = i; continue; }
         if (q->age < 0.45f && q->screen == screen && (screen ? fabsf(q->p.x - pos.x) < 60 && fabsf(q->p.y - pos.y) < 40
-                                                            : fabsf(q->p.x - pos.x) < 1.5f && fabsf(q->p.z - pos.z) < 1.5f)) near++;
+                                                            : fabsf(q->p.x - pos.x) < 1.5f && fabsf(q->p.z - pos.z) < 1.5f)) stacked++;
     }
     if (slot < 0) { slot = 0; for (int i = 1; i < ARC__MAX_POPUPS; i++) if (g_popup[i].age > g_popup[slot].age) slot = i; }   /* full: the oldest goes */
     fx_popup *q = &g_popup[slot];
     q->on = true; q->screen = screen; q->age = 0; q->life = 0.85f; q->scale = scale; q->rgb = rgb;
-    q->p = screen ? arc_v3_make(pos.x, pos.y - 9.0f * scale * (float)near, 0)     /* a chain of them stacks into a column */
-                  : arc_v3_make(pos.x, pos.y + 0.55f * (float)near, pos.z);
+    q->p = screen ? arc_v3_make(pos.x, pos.y - 9.0f * scale * (float)stacked, 0)     /* a chain of them stacks into a column */
+                  : arc_v3_make(pos.x, pos.y + 0.55f * (float)stacked, pos.z);
     size_t n = strlen(text); if (n > sizeof q->text - 1) n = sizeof q->text - 1;
     memcpy(q->text, text, n); q->text[n] = 0;
 }

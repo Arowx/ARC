@@ -9,7 +9,7 @@ enum { TEX_WHITE = 1, TEX_FONT = 2, TEX_FIRST_USER = 3 };
 #define ARC__MAX_BATCHES3D (ARC__MAX_MESHES * 2 + 65536)   /* solid batches (one per mesh and pass) + see-through runs */
 
 /* key = mesh*2 + mirrored; slot: where in the pass (SL_*); z: the batch depth state (ARC__Z_*); order: inside the slot */
-typedef struct { uint32_t key; int blend; float depth; int slot, z, order; uint32_t paint, paint2, paint3; int pat; arc__instance inst; } raw_instance;   /* 0.10.1 pat: see arc__mesh_batch */
+typedef struct { uint32_t key; int blend; float depth; int slot, z, order; uint32_t paint, paint2, paint3; int pat, glw; arc__instance inst; } raw_instance;   /* 0.10.15 glw: index + 1 in R.glows */   /* 0.10.1 pat: see arc__mesh_batch */
 /* slots, in drawing order. SL_FAST: solid, usual depth, order 0 - counting-sorted by mesh (the common case).
    x-ray: the silhouettes (SL_XRAY) come after every other solid mesh and before the meshes they belong to (SL_XOBJ),
    so they are tested against the scene without their own mesh (a mesh never x-rays its own hidden parts) */
@@ -60,6 +60,7 @@ static struct {
     int w, h;                                   /* screen */
     float sdf2d;                                /* 0.10.1: distance-field text being drawn (see arc__batch2d.sdf) */
     arc__pattern pats[ARC__MAX_PATTERNS]; int npats;   /* 0.10.1 this frame's paint patterns */
+    arc__glow glows[ARC__MAX_GLOWS]; int nglows;       /* 0.10.15 this frame's glow schemes */
     uint32_t clear;
     /* current camera + lights (copied into each pass) */
     arc_m4 view, proj, view_proj, inv_view_proj; arc_v3 eye;
@@ -492,6 +493,7 @@ void arc_mesh_destroy(arc_mesh mh) {
     arc__mesh_rec *m = &arc__meshes[mh.id];
     if (m->owns_texture && m->texture) tex_destroy_id(m->texture);
     for (int i = 0; i < 3; i++) if ((m->mat_owns >> i & 1) && m->mat_tex[i]) tex_destroy_id(m->mat_tex[i]);
+    if (m->glow_owned && m->glow_tex) tex_destroy_id(m->glow_tex);   /* 0.10.15 */
     arc__gfx->mesh_destroy(mh.id);
     free(m->v); free(m->idx); free(m->skin); memset(m, 0, sizeof(arc__mesh_rec)); g_mname[mh.id][0] = 0;
     if (g_lod_any) scene_lod_forget(mh.id);
@@ -791,11 +793,18 @@ bool arc__mesh_parse_ex(const uint8_t *d, size_t n, const char *name, arc__mesh_
             off += sz[i];
         }
     }
+    at += mat_bytes;
+    /* 0.10.15 an optional glow mask after everything else (ARC before 0.10.15 never reads this far): "GLOW", its size, the image */
+    if (at + 8 <= n && !memcmp(d + at, "GLOW", 4)) {
+        uint32_t gb; memcpy(&gb, d + at + 4, 4);
+        if (gb && at + 8 + (size_t)gb <= n) { o->has_glow = true; o->glow_bad = !arc__img_decode_or_defer(d + at + 8, gb, ARC_TEX_MESH, &o->glow, defer); }
+    }
     return true;
 }
 void arc__mesh_data_free(arc__mesh_data *o) {
     free(o->v); free(o->idx); free(o->skin); arc__img_free(&o->tex);
     for (int i = 0; i < 3; i++) arc__img_free(&o->maps[i]);
+    arc__img_free(&o->glow);
     memset(o, 0, sizeof *o);
 }
 /* parsed data -> a mesh (main thread), into slot `id` (0 = a new one); takes the images; returns the mesh id or 0 */
@@ -823,6 +832,11 @@ static uint32_t mesh_build(arc__mesh_data *md, const char *name, uint32_t id) {
         }
         material_pack(&arc__meshes[m.id], &mat);
         arc__meshes[m.id].mat_owns = owns;
+    }
+    if (md->has_glow) {   /* 0.10.15 */
+        uint32_t t = md->glow_bad ? 0 : alloc_tex_id();
+        if (md->glow_bad) arc_log("mesh %s: its glow mask could not be decoded", name);
+        else if (t && tex_create_img(t, &md->glow, ARC_TEX_MESH)) { arc__meshes[m.id].glow_tex = t; arc__meshes[m.id].glow_owned = true; }
     }
     return m.id;
 }
@@ -854,8 +868,11 @@ bool arc__mesh_reload(arc_mesh old, const char *path) {
     bool keep_mat = o->has_mat && !o->mat_owns && !f->has_mat;    /* a material the game set (no loaded maps) stays */
     arc__mesh_rec game_mat = *o;
     mesh_material_free_owned(o, f->mat_tex);
+    bool keep_glow = !o->glow_owned && o->glow_tex && !f->glow_tex; uint32_t game_glow = o->glow_tex;   /* 0.10.15 a mask the game set stays */
+    if (o->glow_owned && o->glow_tex && o->glow_tex != f->glow_tex) tex_destroy_id(o->glow_tex);
     free(o->v); free(o->idx); free(o->skin);
     *o = *f;                                   /* the new data, now under the old id */
+    if (keep_glow) { o->glow_tex = game_glow; o->glow_owned = false; }
     o->no_shadow = no_shadow; o->double_sided = o->double_sided || dbl; o->reflect = refl; o->unreflected = unrefl;
     if (keep_tex) { o->texture = game_tex; o->owns_texture = false; }
     if (keep_mat) { o->has_mat = true; o->mat_owns = 0; memcpy(o->mat_tex, game_mat.mat_tex, sizeof o->mat_tex); memcpy(o->mat, game_mat.mat, sizeof o->mat); }
@@ -1121,6 +1138,7 @@ bool arc__mesh_finish(uint32_t id, uint32_t serial, arc__mesh_data *md, const ch
         arc_mesh_set_material(m, saved.has_mat ? &q : NULL);
     }
     if (saved.pend_set & 4) r->double_sided = saved.double_sided;
+    if (saved.pend_set & 32) arc_mesh_set_glow_mask(m, (arc_texture){ saved.glow_tex });   /* 0.10.15 */
     if (saved.pend_set & 8) r->no_shadow = saved.no_shadow;
     if (saved.pend_set & 16) { r->reflect = saved.reflect; r->unreflected = saved.unreflected; }
     return true;
@@ -1766,7 +1784,7 @@ void arc__gfx_begin(void) {
     g_plain_first = -1; g_plain_n = 0; g_offfix_first = -1; g_offfix_n = 0;
     if (g_off_n) { arc__hint("offset2d-open", "arc_push_offset2d was not popped by the end of the frame: the offset is reset each frame"); g_off_n = 0; }
     g_off_x = g_off_y = 0;
-    R.line_push = 0; R.npats = 0; R.sdf2d = 0;
+    R.line_push = 0; R.npats = 0; R.nglows = 0; R.sdf2d = 0;
     arc__draw_cell = 0; g_culled = g_static_draws = 0; memset(g_lod_n, 0, sizeof g_lod_n);
     R.target_depth = 0; R.target_stack[0] = 0; R.blend = ARC__BLEND_ALPHA; R.clip = false;
     R.vp_cur = -1; R.vp_count = 0;   /* 0.10.2: viewport targets last frame didn't use are let go */
@@ -1793,7 +1811,7 @@ static raw_instance *draw_mesh_full(arc_mesh m, arc_m4 model, uint32_t tint, flo
     r->key = m.id * 2u + (det < 0 ? 1u : 0u);
     r->blend = blend;
     r->depth = blend ? arc_v3_dist(arc_v3_make(a[12], a[13], a[14]), R.eye) : 0;
-    r->slot = blend ? SL_TRANS : SL_FAST; r->z = blend ? ARC__Z_NOWRITE : 0; r->order = 0; r->paint = r->paint2 = r->paint3 = 0; r->pat = 0;
+    r->slot = blend ? SL_TRANS : SL_FAST; r->z = blend ? ARC__Z_NOWRITE : 0; r->order = 0; r->paint = r->paint2 = r->paint3 = 0; r->pat = 0; r->glw = 0;
     memcpy(r->inst.model, model.m, sizeof model.m);
     arc__unpack_rgb(tint, r->inst.tint); r->inst.tint[3] = emissive;
     r->inst.params[0] = arc_clampf(mix, 0, 1); r->inst.params[1] = arc_clampf(whiten, 0, 1); r->inst.params[2] = multiply;
@@ -1970,6 +1988,34 @@ static int pattern_index(const arc_paint_pattern *pp, bool armour, arc_anim anim
     if (R.npats >= ARC__MAX_PATTERNS) { arc__hint("patterns-full", "more than 64 different paint patterns in one frame: the rest draw without one"); return 0; }
     R.pats[R.npats++] = q; return R.npats;
 }
+/* 0.10.15 glow schemes: this frame's table (deduplicated), index + 1; 0 = no glow (no mask, or every group off) */
+static bool glow_tex_ok(uint32_t id) { return id && id < ARC__MAX_TEXTURES && arc__textures[id].used; }
+static int glow_index(arc_mesh m, const arc_mesh_style *st) {
+    if (!(st->glow[0] > 0 || st->glow[1] > 0 || st->glow[2] > 0)) return 0;
+    uint32_t tex = glow_tex_ok(st->emissive_mask.id) ? st->emissive_mask.id
+                 : m.id && m.id < ARC__MAX_MESHES && glow_tex_ok(arc__meshes[m.id].glow_tex) ? arc__meshes[m.id].glow_tex : 0;
+    if (!tex) return 0;
+    arc__glow q; memset(&q, 0, sizeof q); q.tex = tex;
+    for (int i = 0; i < 3; i++) {
+        float g = st->glow[i] > 0 ? st->glow[i] : 0.0f, c[4];
+        arc__unpack_rgb(st->glow_rgb[i] ? st->glow_rgb[i] : 0xFFFFFF, c);
+        for (int k = 0; k < 3; k++) q.c[i][k] = c[k] * g;
+    }
+    for (int i = 0; i < R.nglows; i++) if (!memcmp(&R.glows[i], &q, sizeof q)) return i + 1;
+    if (R.nglows >= ARC__MAX_GLOWS) { arc__hint("glows-full", "more than 256 different glow schemes in one frame: the rest draw without their glow"); return 0; }
+    R.glows[R.nglows++] = q; return R.nglows;
+}
+void arc_mesh_set_glow_mask(arc_mesh m, arc_texture mask) {
+    if (!m.id || m.id >= ARC__MAX_MESHES || !arc__meshes[m.id].used) return;
+    arc__mesh_rec *M = &arc__meshes[m.id];
+    if (M->glow_owned && M->glow_tex && M->glow_tex != mask.id) tex_destroy_id(M->glow_tex);
+    M->glow_tex = glow_tex_ok(mask.id) ? mask.id : 0; M->glow_owned = false;
+    if (M->pending) M->pend_set |= 32;
+}
+arc_texture arc_mesh_glow_mask(arc_mesh m) {
+    if (!m.id || m.id >= ARC__MAX_MESHES || !arc__meshes[m.id].used) return (arc_texture){ 0 };
+    return (arc_texture){ arc__meshes[m.id].glow_tex };
+}
 void arc_draw_mesh_styled(arc_mesh m, arc_m4 model, const arc_mesh_style *st) {
     arc_mesh_style z; if (!st) { memset(&z, 0, sizeof z); st = &z; }
     if (arc__draw_cell && !scene_cell_drawable(arc__draw_cell)) { g_culled++; return; }   /* before its bones are made */
@@ -2011,18 +2057,20 @@ void arc_draw_mesh_styled(arc_mesh m, arc_m4 model, const arc_mesh_style *st) {
         r->pat = pattern_index(&st->pattern, st->armour_mask && r->paint, st->anim, st->tint2);
         if (r->pat && r->slot == SL_FAST) r->slot = SL_PAINT;
     }
+    r->glw = glow_index(m, st);   /* 0.10.15 */
+    if (r->glw && r->slot == SL_FAST) r->slot = SL_PAINT;
     if (st->xray > 0 && R.raw_count < ARC__MAX_INSTANCES) {   /* the silhouette: a hologram of it where something nearer hides it */
         raw_instance *x = &R.raw[R.raw_count++]; *x = *r;
         x->blend = ARC__MB_ADD; x->depth = r->depth;
         arc__unpack_rgb(st->xray_rgb ? st->xray_rgb : 0x40E0FF, x->inst.tint); x->inst.tint[3] = 0;
         x->inst.params[0] = 0; x->inst.params[1] = 0; x->inst.params[2] = 1; x->inst.params[3] = 1; x->inst.extra[3] = 1;
         x->inst.fx[2] = arc_clampf(st->xray, 0, 1); x->inst.fx[3] = 0; x->inst.fx[4] = x->inst.fx[5] = 0;
-        x->slot = SL_XRAY; x->z = ARC__Z_GREATER | ARC__Z_NOWRITE; x->order = st->order; x->paint = x->paint2 = x->paint3 = 0; x->pat = 0;
+        x->slot = SL_XRAY; x->z = ARC__Z_GREATER | ARC__Z_NOWRITE; x->order = st->order; x->paint = x->paint2 = x->paint3 = 0; x->pat = 0; x->glw = 0;
         if (r->slot < SL_TRANS) r->slot = SL_XOBJ;   /* the solid mesh itself after its silhouette */
     }
     if (st->outline > 0 && !arc__meshes[m.id].double_sided && R.raw_count < ARC__MAX_INSTANCES) {   /* the hull: same mesh, culled the other way */
         raw_instance *o = &R.raw[R.raw_count++]; *o = *r;
-        o->key ^= 1u; o->blend = ARC__MB_OPAQUE; o->depth = 0; o->paint = o->paint2 = o->paint3 = 0; o->pat = 0;
+        o->key ^= 1u; o->blend = ARC__MB_OPAQUE; o->depth = 0; o->paint = o->paint2 = o->paint3 = 0; o->pat = 0; o->glw = 0;
         set_order(o, st->depth, st->layer, st->order);
         arc__unpack_rgb(st->outline_rgb, o->inst.tint); o->inst.tint[3] = 0;
         o->inst.params[3] = 1; o->inst.extra[3] = 0;
@@ -2815,7 +2863,7 @@ static void gfx_end_mode(int mode) {
                     const raw_instance *x = &R.raw[tsort[j]], *y = &R.raw[tsort[i]];   /* take x first only if strictly before y */
                     bool first = x->slot != y->slot ? x->slot < y->slot : x->order != y->order ? x->order < y->order
                                : x->slot == SL_TRANS ? x->depth > y->depth
-                               : x->slot == SL_PAINT && (x->paint != y->paint ? x->paint < y->paint : x->paint2 != y->paint2 ? x->paint2 < y->paint2 : x->paint3 != y->paint3 ? x->paint3 < y->paint3 : x->pat != y->pat ? x->pat < y->pat : x->key < y->key);
+                               : x->slot == SL_PAINT && (x->paint != y->paint ? x->paint < y->paint : x->paint2 != y->paint2 ? x->paint2 < y->paint2 : x->paint3 != y->paint3 ? x->paint3 < y->paint3 : x->pat != y->pat ? x->pat < y->pat : x->glw != y->glw ? x->glw < y->glw : x->key < y->key);
                     tmerge[o++] = first ? tsort[j++] : tsort[i++];
                 }
                 while (i < m) tmerge[o++] = tsort[i++];
@@ -2830,11 +2878,11 @@ static void gfx_end_mode(int mode) {
                 R.sorted[at] = ri->inst; \
                 arc__mesh_batch *last = nb > run0 ? &R.mesh_batches[nb - 1] : NULL; \
                 if (last && last->mesh == (ri->key >> 1) && last->flip == (int)(ri->key & 1) && last->blend == ri->blend && last->depth == ri->z && last->first + last->count == at \
-                    && last->paint_tex == ri->paint && last->tint2 == ri->paint2 && last->tint3 == ri->paint3 && last->pat == ri->pat) last->count++; \
+                    && last->paint_tex == ri->paint && last->tint2 == ri->paint2 && last->tint3 == ri->paint3 && last->pat == ri->pat && last->glow == ri->glw) last->count++; \
                 else if (nb < ARC__MAX_BATCHES3D) { \
                     arc__mesh_batch *mb = &R.mesh_batches[nb++]; \
                     mb->mesh = ri->key >> 1; mb->flip = (int)(ri->key & 1); mb->blend = ri->blend; mb->depth = ri->z; mb->first = at; mb->count = 1; \
-                    mb->paint_tex = ri->paint; mb->tint2 = ri->paint2; mb->tint3 = ri->paint3; mb->pat = ri->pat; \
+                    mb->paint_tex = ri->paint; mb->tint2 = ri->paint2; mb->tint3 = ri->paint3; mb->pat = ri->pat; mb->glow = ri->glw; \
                 } \
                 at++; tris += arc__meshes[ri->key >> 1].icount / 3; \
             }
@@ -2845,7 +2893,7 @@ static void gfx_end_mode(int mode) {
             uint32_t key = R.raw[i].key;
             if (R.mesh_counts[key]++ == 0) {
                 batch_key[nb] = key; arc__mesh_batch *mb = &R.mesh_batches[nb++];
-                mb->mesh = key >> 1; mb->flip = (int)(key & 1); mb->count = 0; mb->blend = 0; mb->depth = 0; mb->paint_tex = mb->tint2 = mb->tint3 = 0; mb->pat = 0;
+                mb->mesh = key >> 1; mb->flip = (int)(key & 1); mb->count = 0; mb->blend = 0; mb->depth = 0; mb->paint_tex = mb->tint2 = mb->tint3 = 0; mb->pat = 0; mb->glow = 0;
             }
         }
         for (int b = f0; b < nb; b++) { R.mesh_batches[b].first = at; at += R.mesh_counts[batch_key[b]]; R.mesh_counts[batch_key[b]] = R.mesh_batches[b].first; }
@@ -2901,7 +2949,7 @@ static void gfx_end_mode(int mode) {
     f.width = R.w; f.height = R.h;
     f.passes = R.passes; f.pass_count = R.pass_count;
     f.instances = R.sorted; f.instance_count = R.raw_count;
-    f.mesh_batches = R.mesh_batches; f.mesh_batch_count = nb; f.pats = R.pats; f.pat_count = R.npats;
+    f.mesh_batches = R.mesh_batches; f.mesh_batch_count = nb; f.pats = R.pats; f.pat_count = R.npats; f.glows = R.glows; f.glow_count = R.nglows;
     f.imm = R.imm; f.imm_count = R.imm_count;
     f.lines = R.lines; f.line_vertex_count = R.line_count;
     f.ltris = R.ltris; f.ltri_vertex_count = R.ltri_count;

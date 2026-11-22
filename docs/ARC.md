@@ -261,10 +261,12 @@ Tips:
 - Material (0.6; header byte 24 = its size, 0 = none): `"MATL"`, `u32` 1, `u32` flags (1 = PBR), `f32` normal scale,
   metallic, roughness, occlusion strength, emissive r, g, b, `u32` sizes of the normal, ORM and emissive images, then
   the images (PNG or JPEG, laid out like the colour texture). Older ARC skips it.
+- Glow mask (0.10.15, after everything else): `"GLOW"`, `u32` size, then the image (PNG, lossless). Its red, green and
+  blue mark three groups of glowing pixels (`arc_mesh_style.glow`); `arc_mesh_glow_mask` reads it. Older ARC never reads that far.
 
 Make them with `tools/mesh2arcm.py`. Its glTF/GLB reader is built in (numpy and Pillow): textures (kept as JPEG when
 possible), vertex colours, skins and animations. `--footprint/--height/--size`, `--yaw`, `--flat`, `--texture-size`,
-`--batch DIR OUT`. OBJ is read too, and other formats through `trimesh` if it is installed.
+`--glow-mask IMG`, `--batch DIR OUT`. OBJ is read too, and other formats through `trimesh` if it is installed.
 
 **`.arca` animation**: `"ARCA"`, `u32` version = 1, joint and clip counts, a root matrix, then per joint a name, parent,
 inverse bind matrix and rest transform, then per clip a name, rate, frame count and every joint's translation, rotation

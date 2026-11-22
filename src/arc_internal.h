@@ -56,7 +56,10 @@ enum { ARC__MB_OPAQUE = 0, ARC__MB_ALPHA = 1, ARC__MB_ADD = 2 };
    Shadow maps take only batches with blend 0 and depth 0. */
 enum { ARC__Z_LESS = 0, ARC__Z_ALWAYS = 1, ARC__Z_GREATER = 2, ARC__Z_FUNC = 3, ARC__Z_NOWRITE = 4 };
 typedef struct { uint32_t mesh; int first, count; int flip; int blend; int depth;
-                 uint32_t paint_tex, tint2, tint3; int pat; } arc__mesh_batch;   /* 0.10.1 pat: index + 1 in arc__frame_data.pats (0 = none) */
+                 uint32_t paint_tex, tint2, tint3; int pat; int glow; } arc__mesh_batch;   /* 0.10.1 pat: index + 1 in arc__frame_data.pats (0 = none); 0.10.15 glow: index + 1 in .glows */
+/* 0.10.15 a glow scheme (arc_mesh_style.emissive_mask): the mask texture and each channel's colour x strength (c[i][3] unused) */
+#define ARC__MAX_GLOWS 256
+typedef struct { uint32_t tex; float c[3][4]; } arc__glow;
 /* 0.10.1 a paint pattern as the shaders take it (see arc_paint_pattern): p[0] kind, 1/scale, width, offset; p[1] cos, sin
    of the angle, cross, armour; p[2] colour, w unused; p[3] noise offset xyz, w: a static mesh is in the part mask.
    jm[j]: joint j's part is in the mask (1) or not (0). */
@@ -192,6 +195,7 @@ typedef struct {
     const uint32_t *light_tiles; const uint8_t *light_index;   /* per-pass tile tables and light lists (see arc__pass) */
     const float *lsh_vp; const int *lsh_faces; int lsh_count, lsh_res;   /* 0.9.5 light shadow faces (see arc__pass.lsh_n) */
     const arc__pattern *pats; int pat_count; /* 0.10.1 paint patterns (arc__mesh_batch.pat) */
+    const arc__glow *glows; int glow_count;  /* 0.10.15 glow schemes (arc__mesh_batch.glow) */
     bool targets_only;                       /* run passes into render targets, leave the screen alone */
     bool screen_only;                        /* the reverse: targets already hold this frame's drawing */
 } arc__frame_data;
@@ -255,10 +259,11 @@ typedef struct {
     uint32_t layers_tex; float mat3[8];   /* 0.9.6 splat: a texture array (never owned) and ARC__MAT3_* (layers_tex 0 = off) */
     uint8_t layers_mode;                  /* 0.9.9: 0 splat; 1 the colour from layers_tex at each instance's layer (arc_mesh_set_texture_array) */
     /* 0.7.1 background loading: pending = the loader's serial while the mesh is queued (vcount 0: draws nothing);
-       pend_set: settings the game made meanwhile (1 texture, 2 material, 4 double-sided, 8 shadow), kept at the end */
+       pend_set: settings the game made meanwhile (1 texture, 2 material, 4 double-sided, 8 shadow, 32 glow mask), kept at the end */
     uint32_t pending; uint8_t pend_set;   /* (0.8.7: 16 reflection settings) */
     float reflect; bool unreflected;       /* 0.8.7 planar reflections: amount 0..1; left out of the mirror pass */
     bool cutaway;                          /* 0.9.9 cut by arc_set_cutaway */
+    uint32_t glow_tex; bool glow_owned;    /* 0.10.15 the mesh's own glow mask (arc_mesh_set_glow_mask; owned when loaded from the .arcm) */
 } arc__mesh_rec;
 /* mat[]: has normal map, normal scale, pbr, occlusion | metallic, roughness, has orm, has emissive map | emissive rgb, 0.
    Shading (all renderers, see arc_soft.c shade()): with a normal map the normal is bent by it in a frame (T, B, N) with
@@ -371,6 +376,7 @@ typedef struct {
     arc_vertex *v; uint32_t *idx; uint8_t *skin;
     bool has_tex, tex_bad; arc__img tex;
     bool has_mat; arc_material mat; bool map_bad[3]; arc__img maps[3];
+    bool has_glow, glow_bad; arc__img glow;   /* 0.10.15 the mesh's glow mask (a trailing GLOW block) */
     char err[360];
 } arc__mesh_data;
 bool     arc__mesh_parse(const uint8_t *d, size_t n, const char *name, arc__mesh_data *o);

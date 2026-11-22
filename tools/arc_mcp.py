@@ -89,7 +89,8 @@ class Game:
             else: cmd = ['sh', 'build.sh', 'linux' if window else 'headless', source]
         elif os.name == 'nt': cmd = ['cmd', '/c', 'build.bat'] + ([] if window else ['headless'])
         else: cmd = ['sh', 'build.sh', 'linux' if window else 'headless']
-        r = subprocess.run(cmd, cwd=d, capture_output=True, text=True, errors='replace')
+        env = dict(os.environ, ARC_NO_LAUNCH='1')   # 0.10.15: a game's plain build.bat would ask to launch it
+        r = subprocess.run(cmd, cwd=d, capture_output=True, text=True, errors='replace', env=env)
         out = (r.stdout + r.stderr).strip().splitlines()
         warn = [l for l in out if re.search(r'warning|error', l, re.I)]
         return r.returncode == 0, out, warn
