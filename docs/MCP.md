@@ -28,6 +28,9 @@ Claude Code asks once before it trusts a project's server. On Linux or macOS, if
 
 | Tool | What it does |
 |---|---|
+| `arc_run(script, expect, args, build, source, exe, restart)` | 0.10.16: the loop in one call. Builds the headless game when its sources (or ARC's) changed since the last build, starts it when it isn't running (or was rebuilt, or `args` changed), runs `script` and tests each `expect` line. Returns `PASS` / `FAIL` per line with the value each path holds (`FAIL game.score == 10   (game.score = 7)`), and any `ARC error` lines. Called again with no `exe`, it keeps using the running game and its flags. |
+| `arc_brief(check, source)` | 0.10.16: a one-page brief of the game (`tools/arc_brief.py`): the ARC version it needs, where the callbacks live, the `dump()` fields from a real run, commands, tunables, assets, features, open requests. `check=true` adds the acceptance results. Read it first. |
+| `arc_report(seeds, frames, fields, cmd, sessions)` | 0.10.16: the health report (`tools/arc_report.py`): doctor, warnings, every acceptance file, `state_check`, optionally a seed sweep and the newest play session. Stops the running game first. |
 | `arc_build(window, source)` | Runs the game's `build.bat` / `build.sh`: headless by default, the window build with `window=true`. Shows warnings and errors. In ARC's repo, `source="tests/target_game.c"`. |
 | `arc_start(window, args, exe)` | Starts the game with `--stdin` and keeps it running. `window=true` opens the real window; `args` e.g. `"--seed 7 --size 1280x720 --hot"`. |
 | `arc_command(command)` | Any agent commands, as in `--cmd` (`"step 30; press D; step 10; release D"`), and their output. |
@@ -59,6 +62,9 @@ With `arc_start(window=true)`:
   `--stdin` on a pipe no longer blocks while it waits for a command.
 
 ## Tips
+
+- Start a session with `arc_brief`, then work with `arc_run`: one call per change instead of build, start, command and
+  a check per line. Finish with `arc_report` before committing.
 
 - Look with `arc_frame` and `arc_dump` first: a picture costs far more tokens than JSON. Use `arc_shot` when the look
   itself is the question.

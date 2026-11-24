@@ -161,6 +161,7 @@ rem 0.9.8: --draw-last, --shot-at, --no-assets, reset, arc_batch, arc_import --f
 cl %CFLAGS% /DARC_HEADLESS_ONLY tests\headless_game.c src\arc.c /Fo:build\ /Fe:build\headless_game.exe || exit /b 1
 python tests\headless_tools_test.py build\headless_game.exe || exit /b 1
 python tests\mcp_test.py build\target_headless.exe || exit /b 1
+python tests\agent_tools_test.py --exe build\board_headless.exe || exit /b 1
 cl %CFLAGS% /DARC_HEADLESS_ONLY tests\test_post.c src\arc.c /Fo:build\ /Fe:build\arc_test_post.exe || exit /b 1
 pushd build
 python ..\tools\run_retry.py arc_test_post.exe --headless --render-all --msaa 0 --frames 300

@@ -206,6 +206,19 @@ as for games with `draw()`.
 - **Building:** a game's plain `build.bat` asks to launch it (No after 15 s); `build.bat run` launches without
   asking, and `./build.sh run` does the same on Linux. Set `ARC_NO_LAUNCH=1` in scripts that call a plain `build.bat`.
 
+## Getting up to speed and checking fast (0.10.16)
+
+- **First, the brief:** `python3 <ARC>/tools/arc_brief.py GAME_DIR` (or a `.c` file in ARC's repo) prints one page:
+  the ARC version the game needs, where `init` / `tick` / `draw` / `dump` / `command` / `save_state` live (file:line),
+  the `dump()` fields from a real headless run, debug commands, tunables, meshes, assets, features and open requests.
+  `--check` adds each acceptance block's result, `--json` gives the same as JSON. Read it before opening the code.
+- **Before a commit, the report:** `python3 <ARC>/tools/arc_report.py GAME_DIR` runs the doctor, the warning check,
+  every acceptance file and `state_check`, and exits 1 on any failure. Add `--seeds 1-20 --field game.score` for a
+  balance sweep and `--sessions` for the newest play session (its F8 bookmarks with replay commands).
+- **Through MCP, one call per change:** `arc_run(script="select 0; move 2 0; step 30", expect=["game.units[0].x == 2"])`
+  builds if a source changed, starts the game if needed, runs the script and tests the lines, returning
+  `PASS` / `FAIL` with the values found. `arc_brief` and `arc_report` are MCP tools too.
+
 ## Asking ARC for a change (0.10.13)
 
 When the game needs something ARC doesn't do, write the request in the `docs/REQUESTS.md` template, with an

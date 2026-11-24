@@ -25,8 +25,9 @@ import argparse, base64, json, os, queue, re, shlex, subprocess, sys, tempfile, 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, 'tools'))
 import arc_check  # noqa: E402  (parse_expect, test: the same rules as acceptance checks)
+import arc_brief, arc_report  # noqa: E402  (0.10.16: arc_brief / arc_report tools)
 
-VERSION = '0.10.10'
+VERSION = '0.10.16'
 LOOKS = {'frame', 'dump', 'ui', 'vars', 'get', 'help', 'stats', 'camera', 'shot', 'live', 'echo', 'editor dump',
          'editor info', 'timeline info', 'timeline marks', 'cells', 'lod', 'net status', 'net players'}
 
@@ -213,6 +214,24 @@ TOOLS = [
                        'arc-check file that tools/arc_check.py runs headless. Returns the path and text.',
      {'path': ('string', 'file to write (default tests/live_<time>.md in the game folder)'), 'title': ('string', 'heading')}, []),
     ('arc_stop', 'Quit the running game.', {}, []),
+    ('arc_run', 'One call for the build -> run -> check loop (0.10.16): builds the headless game if its sources (or ARC\'s) '
+                'changed since the last build, starts it if it is not running (or was rebuilt, or args changed), runs `script` '
+                '(agent commands separated by ;) and tests each `expect` line (acceptance-check syntax). Returns PASS / FAIL '
+                'per line with the values those paths hold, and any ARC error lines. Each step is recorded for arc_save_check.',
+     {'script': ('string', 'agent commands, e.g. "step 60; press D; step 10; release D"'),
+      'expect': ('array', 'checks, e.g. ["tick >= 60", "game.score == 10"] (a string with one per line works too)'),
+      'args': ('string', 'command-line flags for the game (a change restarts it)'), 'build': ('boolean', 'true: always build; false: never'),
+      'source': ('string', 'ARC repo only: the .c file'), 'exe': ('string', 'run this executable (never built)'),
+      'restart': ('boolean', 'start the game afresh first (tick 0)')}, []),
+    ('arc_brief', 'A short brief of the game to read first (0.10.16): ARC version it needs, where init/tick/draw/dump/command '
+                  'live, the dump() fields (from a real run), debug commands, tunables, meshes, assets, features, open requests. '
+                  'check=true also runs its acceptance checks.',
+     {'check': ('boolean', 'run the acceptance checks too (builds headless)'), 'source': ('string', 'ARC repo only: a .c file to brief')}, []),
+    ('arc_report', 'One health report (0.10.16): doctor, compiler warnings, every acceptance file, state_check, and optionally '
+                   'a seed sweep and the newest play session. Stops the running game first (the build replaces its exe).',
+     {'seeds': ('string', 'sweep these seeds, e.g. "1-20"'), 'frames': ('integer', 'ticks per sweep run (default 600)'),
+      'fields': ('string', 'dump fields to sweep, comma separated (default: the numbers under game)'),
+      'cmd': ('string', 'agent commands for each sweep run'), 'sessions': ('boolean', 'summarise the newest play session')}, []),
 ]
 
 
@@ -374,6 +393,87 @@ class Server:
         self.g.stop()
         return [txt('stopped')], False
 
+    # ---- 0.10.16: the loop in one call, the brief, the report ----
+    def sources_newer(self, exe, source):
+        """True when a game or engine source is newer than exe (or exe is missing)."""
+        if not exe or not os.path.exists(exe): return True
+        t = os.path.getmtime(exe)
+        files = [os.path.join(self.g.game_dir, source)] if source else arc_brief.sources(self.g.game_dir, None)
+        arc, _ = arc_brief.find_arc(self.g.game_dir, os.path.join(self.g.game_dir, source) if source else None)
+        for d in ([os.path.join(arc, 'src'), os.path.join(arc, 'include')] if arc else []):
+            for root, _, fs in os.walk(d): files += [os.path.join(root, f) for f in fs if f.endswith(('.c', '.h'))]
+        return any(os.path.exists(f) and os.path.getmtime(f) > t for f in files)
+
+    def t_arc_run(self, a):
+        g, notes, t0 = self.g, [], time.time()
+        source = a.get('source')
+        exe = a.get('exe') or g.default_exe(False, source)
+        given = bool(a.get('exe'))
+        if not exe and g.running() and not g.window: exe, given = g.exe, True   # keep using the game already running
+        if not exe: raise RuntimeError('no exe: give exe, or run from a game folder (with build.sh / build.bat)')
+        exe = os.path.abspath(exe)
+        want_build = a.get('build')
+        rebuilt = False
+        if not given and (want_build is True or (want_build is None and self.sources_newer(exe, source))):
+            if g.running(): g.stop()   # (Windows can't replace a running exe)
+            ok, out, warn = g.build(False, source)
+            if not ok:
+                return [txt('BUILD FAILED\n' + '\n'.join((warn or out)[-30:]))], True
+            rebuilt = True
+            notes.append('built%s (%.1f s)' % (' with %d warning lines' % len(warn) if warn else '', time.time() - t0))
+            if warn: notes += warn[:10]
+        if 'args' in a: args = shlex.split(a.get('args') or '', posix=os.name != 'nt')
+        else: args = list(g.args) if g.running() and g.exe and os.path.normcase(os.path.abspath(g.exe)) == os.path.normcase(exe) else []
+        same = g.running() and not g.window and g.exe and os.path.normcase(os.path.abspath(g.exe)) == os.path.normcase(exe) and g.args == args
+        if rebuilt or a.get('restart') or not same:
+            out = g.start(exe, args, False, 60)
+            if not g.running(): return [txt('the game did not start\n' + brief(out))], True
+            notes.append('started %s%s' % (os.path.basename(exe), (' ' + ' '.join(args)) if args else ''))
+        out = []
+        if a.get('script'):
+            out = g.send(a['script'], float(a.get('timeout') or 300))
+        errs = [l for l in out if l.startswith('ARC error')]
+        exprs = a.get('expect') or []
+        if isinstance(exprs, str): exprs = exprs.splitlines()
+        exprs = [e.strip() for e in exprs if e and e.strip()]
+        lines, bad = [], 0
+        if exprs:
+            need = set()
+            for e in exprs:
+                k, path, op, want = arc_check.parse_expect(e)
+                r = arc_check.split_path(path)[0] if arc_check.split_path(path) else 'dump'
+                need.add(r if r in ('frame', 'ui', 'sheet') else 'dump')
+            snaps = {k: Game.json_line(g.send(k, record=False), k) for k in need - {'sheet'}}
+            if 'sheet' in need: snaps['sheet'] = Game.json_line(out, 'sheet')
+            for e in exprs:
+                kind, path, op, want = arc_check.parse_expect(e)
+                ok, got = arc_check.test(kind, path, op, want, snaps)
+                shown = got[0] if isinstance(got, list) and len(got) == 1 else got
+                if ok and op == 'contains' and kind == 'path':   # show the value that matched, not the first few
+                    vals = arc_check.resolve(path, snaps) or []
+                    shown = next((v for v in vals if (isinstance(v, str) and str(want) in v) or (isinstance(v, list) and want in v)), shown)
+                lines.append('%s %s   (%s = %s)' % ('PASS' if ok else 'FAIL', e, (kind + '(' + path + ')') if kind != 'path' else path, json.dumps(shown)[:200]))
+                bad += not ok
+                g.record.append(('expect', e))
+        head = '; '.join(notes) if notes else 'game already running'
+        body = '\n'.join(lines) if lines else brief(out, keep=30)
+        tail = ('\n' + '\n'.join(errs[:10])) if errs and lines else ''
+        summary = '%d/%d checks passed' % (len(lines) - bad, len(lines)) if lines else 'ran'
+        return [txt('%s; %s (%.1f s)\n%s%s' % (head, summary, time.time() - t0, body, tail))], bad > 0 or bool(errs)
+
+    def t_arc_brief(self, a):
+        target = os.path.join(self.g.game_dir, a['source']) if a.get('source') else self.g.game_dir
+        if a.get('check') and self.g.running(): self.g.stop()
+        B = arc_brief.brief(target, check=bool(a.get('check')), run=True, net=True)
+        return [txt(arc_brief.markdown(B))], any(not c['ok'] for c in B['checks'])
+
+    def t_arc_report(self, a):
+        was = self.g.running()
+        if was: self.g.stop()
+        fields = [f.strip() for f in (a.get('fields') or '').split(',') if f.strip()] or None
+        R = arc_report.report(self.g.game_dir, a.get('seeds'), int(a.get('frames') or 600), fields, a.get('cmd'), bool(a.get('sessions')))
+        return [txt(arc_report.markdown(R) + ('\n(the running game was stopped: arc_start or arc_run starts it again)' if was else ''))], not R['ok']
+
     # ---- MCP ----
     def handle(self, msg):
         mid, method, params = msg.get('id'), msg.get('method'), msg.get('params') or {}
@@ -381,7 +481,9 @@ class Server:
             return ok(mid, {'protocolVersion': params.get('protocolVersion', '2025-06-18'),
                             'capabilities': {'tools': {}},
                             'serverInfo': {'name': 'arc', 'version': VERSION},
-                            'instructions': 'ARC game engine tools. arc_build, then arc_start (window=true to show the person), '
+                            'instructions': 'ARC game engine tools. Start with arc_brief (what the game is and where things are). '
+                                            'arc_run builds if needed, runs a script and tests expect lines in one call; arc_report is a health check. '
+                                            'Step by step: arc_build, then arc_start (window=true to show the person), '
                                             'then arc_step / arc_command / arc_frame / arc_dump / arc_shot / arc_expect; '
                                             'arc_save_check turns the session into a headless test. Read <ARC>/AGENTS.md for every command.'})
         if method in ('notifications/initialized', 'notifications/cancelled') or (mid is None and method and method.startswith('notifications/')):
@@ -390,7 +492,7 @@ class Server:
         if method == 'tools/list':
             tools = []
             for name, desc, props, req in TOOLS:
-                schema = {'type': 'object', 'properties': {k: {'type': t, 'description': d} for k, (t, d) in props.items()}}
+                schema = {'type': 'object', 'properties': {k: dict({'type': t, 'description': d}, **({'items': {'type': 'string'}} if t == 'array' else {})) for k, (t, d) in props.items()}}
                 if req: schema['required'] = req
                 tools.append({'name': name, 'description': desc, 'inputSchema': schema})
             return ok(mid, {'tools': tools})

@@ -108,6 +108,7 @@ case "$target" in
             ${CC:-cc} $CFLAGS -D_GNU_SOURCE -DARC_HEADLESS_ONLY tests/headless_game.c src/arc.c -o build/headless_game -lm   # 0.9.8: --draw-last, --shot-at, --no-assets, reset, arc_batch, import --fit
             python3 tests/headless_tools_test.py build/headless_game || exit 1
             python3 tests/mcp_test.py build/target_headless || exit 1   # 0.10.10: tools/arc_mcp.py over MCP
+            python3 tests/agent_tools_test.py --exe build/board_headless || exit 1   # 0.10.16: arc_brief, arc_report (request #12)
             ${CC:-cc} $CFLAGS -D_GNU_SOURCE -DARC_HEADLESS_ONLY tests/test_post.c src/arc.c -o build/arc_test_post -lm
             (cd build && ./arc_test_post --headless --render-all --msaa 0 --frames 300) ;;
   relay)    ${CC:-cc} -std=c11 -Wall -Wextra -O2 tools/arc_relay/arc_relay.c -o build/arc_relay && echo "built build/arc_relay"

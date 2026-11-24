@@ -2,6 +2,39 @@
 
 Version numbers follow `ARC_VERSION` in `include/arc.h`. Games can check it at compile time.
 
+## 0.10.16 — 24 Nov 2026: agent speed tools (arc_brief, arc_report, arc_run)
+
+From the tooling request (#12): rather than an ARC code editor, three tools that cut the time an agent spends getting
+up to speed, gathering results and making MCP round trips. No engine changes. New test: `tests/agent_tools_test.py`
+(on a tactics game and `samples/board`, in `build test`); `tests/mcp_test.py` checks `arc_run`.
+
+- **`tools/arc_brief.py [GAME_DIR | FILE.c] [--out BRIEF.md] [--json] [--check]`**: a one-page brief for an agent to
+  read first, instead of reading `main.c` over again each session. It gives:
+  - the title, the ARC it builds against and that ARC's version;
+  - the ARC the game needs: its newest engine calls, dated from `arc.h`'s version notes and `ARC_HAS_*` comments, plus
+    any `ARC_HAS_*` macros it checks;
+  - source files with line counts, and `file:line` of `init` / `tick` / `draw` / `dump` / `command` / `save_state` /
+    `load_state`;
+  - the `dump()` schema from a real headless run (`step 60`), or from the source when there is no build;
+  - debug commands and how many words they take, and tunables with their defaults;
+  - named meshes, assets by kind, and the engine features used;
+  - with `--check`, each acceptance block's result;
+  - open request issues for the game on GitHub.
+  The tactics template's brief is 45 lines.
+- **`tools/arc_report.py [GAME_DIR] [--seeds 1-20 --frames N --field ...] [--sessions] [--json]`**: one health report
+  that exits 1 on any failure. It runs:
+  - the doctor;
+  - the compiler-warning check on the game's sources (MSVC when `cl` is there);
+  - every acceptance file, blocks and checks passed (failed blocks named);
+  - `state_check`;
+  - optionally a seed sweep (min / median / max per field);
+  - optionally the newest play session, with its events and each F8 bookmark's replay command.
+- **MCP `arc_run`**: build if the game's or ARC's sources changed, start if not running, run a script and test
+  `expect` lines in one call; it returns `PASS` / `FAIL` per line with the value each path holds. Also **`arc_brief`**
+  and **`arc_report`** as MCP tools. The server's instructions now point agents at `arc_brief` and `arc_run` first.
+- `new_game.py`: new games' `AGENTS.md` starts with the brief, the report and `arc_run`. `--update-scripts` adds the
+  same "Start here" note to an older game's `AGENTS.md` (once).
+
 ## 0.10.15 — 21 Nov 2026: glow masks (lamps per draw), build.bat offers to launch, a Windows build fix
 
 Self-test 2709 (9 new, `tests/test_v1015.c`). Post test: a new look, `L_GLOW`. New checks: `tests/glow_mask_check.md`

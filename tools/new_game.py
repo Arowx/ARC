@@ -278,7 +278,16 @@ echo "built $target"
 
 AGENTS = '''# {title} — notes for AI agents
 
-This game runs on the **ARC** engine. The engine lives at the path in `arc.txt`. Read these first:
+This game runs on the **ARC** engine. The engine lives at the path in `arc.txt`.
+
+**Start here:** `python <ARC>/tools/arc_brief.py` prints a one-page brief of this game: the ARC version it needs,
+where `init` / `tick` / `draw` / `dump` / `command` live, the `dump()` fields, commands, tunables, assets and features
+(`--check` adds the acceptance results). `python <ARC>/tools/arc_report.py` is the health check before a commit:
+doctor, warnings, every acceptance file, `state_check` (`--seeds 1-20 --field game.score` adds a balance sweep,
+`--sessions` the newest play session). Through MCP: `arc_brief`, `arc_report`, and `arc_run` (build if needed, run a
+script, test `expect` lines, all in one call).
+
+Then read:
 
 - `<ARC>/AGENTS.md` — the build, run and inspect loop, and the agent command reference.
 - `<ARC>/docs/QUICK.md` — every engine name, one line each, by topic (topic pages in `<ARC>/docs/api/`).
@@ -295,14 +304,25 @@ This game runs on the **ARC** engine. The engine lives at the path in `arc.txt`.
 - Checks: `python <ARC>/tools/arc_check.py tests/acceptance.md` (when there is one) and `python <ARC>/tools/arc_doctor.py`.
 - Art: `python <ARC>/tools/arc_import.py art/thing.glb --height 2` files it under assets/ and prints the load line.
 - Release: `python <ARC>/tools/arc_release.py --dry-run`, then `--version X.Y.Z` (settings in `release.json`).
-- Live (0.10.10): `.mcp.json` starts ARC's MCP server (`<ARC>/tools/arc_mcp.py`): `arc_build`, `arc_start` (window=true
-  to let the person watch), `arc_step`, `arc_frame`, `arc_shot`, `arc_pick`, `arc_expect`, and `arc_save_check` to keep
-  what you found as a headless test. See `<ARC>/docs/MCP.md`.
+- Live (0.10.10): `.mcp.json` starts ARC's MCP server (`<ARC>/tools/arc_mcp.py`): `arc_run` (0.10.16: the whole
+  build -> script -> check loop in one call), `arc_build`, `arc_start` (window=true to let the person watch),
+  `arc_step`, `arc_frame`, `arc_shot`, `arc_pick`, `arc_expect`, and `arc_save_check` to keep what you found as a
+  headless test. See `<ARC>/docs/MCP.md`.
 
 ## Game-specific commands (`command()` callback)
 
 <!-- list them here as you add them, e.g. `spawn N`, `level N`, `god` -->
 '''
+
+AGENTS_START = """
+## Start here (ARC 0.10.16)
+
+`python <ARC>/tools/arc_brief.py` prints a one-page brief of this game (the ARC version it needs, where the callbacks
+live, the `dump()` fields, commands, tunables, assets, features; `--check` adds the acceptance results).
+`python <ARC>/tools/arc_report.py` is the health check before a commit: doctor, warnings, every acceptance file,
+`state_check` (`--seeds 1-20 --field game.score` adds a sweep, `--sessions` the newest play session). Through MCP:
+`arc_brief`, `arc_report`, and `arc_run` (build if needed, run a script, test `expect` lines, in one call).
+"""
 
 def zipname(title):   # "Babel" -> Babel-windows.zip; "My Game!" -> MyGame-windows.zip
     return ''.join(c for c in title if c.isalnum() or c in '_-') or 'game'
@@ -342,6 +362,10 @@ def update_scripts(dest, a):
     try: os.chmod(os.path.join(dest, 'build.sh'), 0o755)
     except OSError: pass
     print('rewrote build.bat and build.sh in %s (name %s, title %s; old ones saved as *.old)' % (dest, name, title))
+    ag = os.path.join(dest, 'AGENTS.md')   # 0.10.16: point agents at the brief / report / arc_run (once)
+    if os.path.isfile(ag) and 'arc_brief' not in open(ag, encoding='utf-8', errors='replace').read():
+        with open(ag, 'a', encoding='utf-8', newline='\n') as f: f.write(AGENTS_START)
+        print('added the "Start here" note (arc_brief, arc_report, arc_run) to AGENTS.md')
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
