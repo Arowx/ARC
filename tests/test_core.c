@@ -412,7 +412,8 @@ static void check_3d_target(void) {
 #include "test_v1013.c"
 #include "test_v1014.c"
 #include "test_v1015.c"
-static void init(void) { v071s_init(); v07_ui(); v07_audio(); v06_materials(); v051_math_text(); v051_buses(); v051_frame_times(); v051_jpeg(); v05_collision(); v05_audio(); v05_state_io(); v05_pack(); v05_review(); test_v04(); test_math(); test_rng(); test_pool(); test_arena(); test_png(); test_turns(); test_draw_api(); make_test_font(); test_audio(); test_mp3_audio(); test_saves(); v071l_init(); v072t_init(); v080n_init(); v081r_init(); v082_init(); v085r_init(); v092_init(); v093_init(); v094_init(); v095_init(); v096_init(); v097j_init(); v097d_init(); v098r_init(); v099b_init(); v100_init(); v101_init(); v102_init(); v103_init(); v105_init(); v106_init(); v108_init(); v1011_init(); v1012_init(); v1013_init(); v1014_init(); v1015_init(); }
+#include "test_v1017.c"
+static void init(void) { v071s_init(); v07_ui(); v07_audio(); v06_materials(); v051_math_text(); v051_buses(); v051_frame_times(); v051_jpeg(); v05_collision(); v05_audio(); v05_state_io(); v05_pack(); v05_review(); test_v04(); test_math(); test_rng(); test_pool(); test_arena(); test_png(); test_turns(); test_draw_api(); make_test_font(); test_audio(); test_mp3_audio(); test_saves(); v071l_init(); v072t_init(); v080n_init(); v081r_init(); v082_init(); v085r_init(); v092_init(); v093_init(); v094_init(); v095_init(); v096_init(); v097j_init(); v097d_init(); v098r_init(); v099b_init(); v100_init(); v101_init(); v102_init(); v103_init(); v105_init(); v106_init(); v108_init(); v1011_init(); v1012_init(); v1013_init(); v1014_init(); v1015_init(); v1017_init(); }
 static arc_texture tgt; static int tw_in = -1, tw_out = -1;
 static const uint8_t *tpx(int x, int y) { return arc__textures[tgt.id].rgba + ((size_t)y * 16 + x) * 4; }
 static void draw_target(void) {   /* 16x16 target: red clear, clipped blue, additive green, untextured triangle */

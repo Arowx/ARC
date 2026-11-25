@@ -2,6 +2,29 @@
 
 Version numbers follow `ARC_VERSION` in `include/arc.h`. Games can check it at compile time.
 
+## 0.10.17 — 25 Nov 2026: scroll panels (MOLTEN BREACH)
+
+From MOLTEN BREACH's request (`incoming/moltenbreach-scroll-panels.md`): arc_ui panels taller than a phone screen can
+now be limited in height and scrolled, so the game's whole-row pager (`HudPager`) can go. Existing panels draw and
+behave exactly as before (the self-test compares their drawing). New check: `tests/scroll_panel_check.md` (demo
+`scroll_panel_test`); self-test `tests/test_v1017.c`.
+
+- **`arc_ui_begin_scroll(title, x, y, w, max_h, &scroll)`**: a panel no taller than `max_h` (UI units, like `w`).
+  - Its content is laid out as usual, drawn clipped to the panel and moved up by `scroll` (pixels, kept in range).
+  - A drag inside the panel (mouse or touch) or the wheel over it (40 pixels a step, scaled) scrolls it.
+  - A drag that moves more than 6 pixels up or down presses nothing; one that goes sideways first is left to a slider.
+  - A thin bar on the right shows the position when the content is taller than the panel.
+  - Keyboard and gamepad focus moving to a hidden widget scrolls it into view.
+  - `scroll` may be NULL (ARC keeps the position). `max_h <= 0` is a plain panel.
+- **`arc_ui_content_height()`**: after `arc_ui_end`, the last panel's full height in pixels (any panel).
+- **Hidden widgets**: widgets scrolled out of view take no clicks or touches and are left out of `ui` / `frame.ui`. A
+  widget partly in view is listed with its visible part and `"clipped": true`, so `ui_click` presses it where it
+  shows. `ui_fit` sees the visible box, so a scroll panel fits whatever its content.
+- **State**: a drag under way, panel heights and ARC-kept positions are saved with the UI state (rewind, rollback);
+  older states still load.
+- **Agents**: new command `wheel N` (mouse wheel steps next tick, + up). `ARC_HAS_UI_SCROLL` (1017).
+- The UI's drawing culls commands wholly scrolled out of view, so long lists don't fill the command buffer.
+
 ## 0.10.16 — 24 Nov 2026: agent speed tools (arc_brief, arc_report, arc_run)
 
 From the tooling request (#12): rather than an ARC code editor, three tools that cut the time an agent spends getting

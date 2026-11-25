@@ -88,7 +88,7 @@ case "$target" in
             ${CC:-cc} $CFLAGS -D_GNU_SOURCE -DARC_HEADLESS_ONLY samples/demo/demo.c src/arc.c -o build/demo_headless -lm   # 0.10.11 lines and touch (Vector Trader)
             python3 tools/arc_request.py tests/offset2d_check.md --game test --dry-run > /dev/null   # 0.10.13 request tool (no network)
             python3 tests/launch_prompt_test.py || exit 1   # 0.10.15 build.bat asks to launch the game
-            for c in line touch nan text save_path command_clash offset2d lines2d music_loop; do python3 tools/arc_check.py tests/${c}_check.md --exe build/demo_headless > build/${c}_check.txt || { cat build/${c}_check.txt; exit 1; }; tail -1 build/${c}_check.txt; done
+            for c in line touch nan text save_path command_clash offset2d lines2d music_loop scroll_panel; do python3 tools/arc_check.py tests/${c}_check.md --exe build/demo_headless > build/${c}_check.txt || { cat build/${c}_check.txt; exit 1; }; tail -1 build/${c}_check.txt; done
             python3 tests/line_width_test.py build/demo_headless || exit 1
             python3 tests/touch_replay_test.py build/demo_headless || exit 1
             rc=0; python3 tools/arc_check.py tools/tests/two_blocks.md > build/two_blocks.txt || rc=$?   # 0.10.12: every block runs; one fails on purpose

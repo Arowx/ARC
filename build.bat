@@ -119,6 +119,7 @@ python tools\arc_check.py tests\command_clash_check.md --exe build\demo_headless
 python tools\arc_check.py tests\offset2d_check.md --exe build\demo_headless.exe || exit /b 1
 python tools\arc_check.py tests\lines2d_check.md --exe build\demo_headless.exe || exit /b 1
 python tools\arc_check.py tests\music_loop_check.md --exe build\demo_headless.exe || exit /b 1
+python tools\arc_check.py tests\scroll_panel_check.md --exe build\demo_headless.exe || exit /b 1
 python tools\arc_request.py tests\offset2d_check.md --game test --dry-run > NUL || exit /b 1
 python tests\launch_prompt_test.py || exit /b 1
 python tools\arc_check.py tools\tests\two_blocks.md > build\two_blocks.txt

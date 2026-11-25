@@ -219,6 +219,15 @@ as for games with `draw()`.
   builds if a source changed, starts the game if needed, runs the script and tests the lines, returning
   `PASS` / `FAIL` with the values found. `arc_brief` and `arc_report` are MCP tools too.
 
+## Scroll panels (0.10.17)
+
+- **Lists taller than the screen:** `arc_ui_begin_scroll("Orders", x, y, 260, 200, &G.orders_scroll)` instead of
+  `arc_ui_begin`, the widgets as usual, then `arc_ui_end()`. The panel is at most 200 UI units tall; the player drags
+  or wheels it, and a drag doesn't press a button. Don't page lists by hand. Keep the scroll in the game struct.
+- **Testing:** widgets out of view are not in `frame.ui`, so `expect frame.ui[label=Row 30] missing` before
+  scrolling and `contains` after. Scroll with `mouse X Y; press MOUSE_LEFT; step 1; mouse X Y2; step 1; release
+  MOUSE_LEFT; step 2`, or `mouse X Y; wheel -5; step 2`. Widgets partly in view carry `"clipped": true`.
+
 ## Asking ARC for a change (0.10.13)
 
 When the game needs something ARC doesn't do, write the request in the `docs/REQUESTS.md` template, with an
