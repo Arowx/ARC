@@ -37,7 +37,7 @@ ARC is a small, fast game engine in plain C11, with no external libraries. It is
 
 ```sh
 ./build.sh test                       # self-test, headless
-./build.sh linux                      # SWARM sample with a window  -> build/demo
+./build.sh linux                      # TOY BOX BLITZ sample with a window  -> build/demo
 ./build.sh headless && build/demo_headless --headless --cmd "step 120; press D; step 60; shot a.png; dump; quit"
 ./build.sh web                        # -> build/web/demo.html (serve over http)
 build.bat                             # Windows, from a VS Developer Prompt -> build\demo.exe

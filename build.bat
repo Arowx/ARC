@@ -120,6 +120,7 @@ python tools\arc_check.py tests\offset2d_check.md --exe build\demo_headless.exe 
 python tools\arc_check.py tests\lines2d_check.md --exe build\demo_headless.exe || exit /b 1
 python tools\arc_check.py tests\music_loop_check.md --exe build\demo_headless.exe || exit /b 1
 python tools\arc_check.py tests\scroll_panel_check.md --exe build\demo_headless.exe || exit /b 1
+python tools\arc_check.py tests\demo_check.md --exe build\demo_headless.exe || exit /b 1
 python tools\arc_request.py tests\offset2d_check.md --game test --dry-run > NUL || exit /b 1
 python tests\launch_prompt_test.py || exit /b 1
 python tools\arc_check.py tools\tests\two_blocks.md > build\two_blocks.txt
@@ -207,6 +208,7 @@ if errorlevel 1 (echo emcc still not found after "%EMSDK%\emsdk_env.bat" - run "
 if not exist build\web mkdir build\web
 set "PRELOAD="
 if exist assets set "PRELOAD=--preload-file assets"
+if not exist assets if exist samples\demo\assets if /i "%GAME%"=="samples\demo\demo.c" set "PRELOAD=--preload-file samples/demo/assets"
 call emcc -std=c11 -Iinclude -Wall -O2 -ffp-contract=off "%GAME%" src\arc.c -o build\web\%NAME%.html --shell-file web\shell.html -sUSE_WEBGL2=1 -sMIN_WEBGL_VERSION=2 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=268435456 "-sEXPORTED_FUNCTIONS=_main,_malloc,_free,_arc_web_audio_fill,_arc_web_command" "-sEXPORTED_RUNTIME_METHODS=lengthBytesUTF8,stringToUTF8,HEAPF32" %PRELOAD% || exit /b 1
 echo built build\web\%NAME%.html - serve the folder: cd build\web ^&^& python -m http.server 8000, then open http://localhost:8000/%NAME%.html
 exit /b 0
