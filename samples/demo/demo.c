@@ -20,7 +20,7 @@
 #define MAX_COLLIDERS 64
 
 enum { K_ANT, K_BEETLE, K_FLEA, K_KINDS };
-typedef struct { arc_v3 pos, vel; float hp, phase; int kind; float age, flash, hop; } enemy;
+typedef struct { arc_v3 pos, vel; float hp, phase; int kind; float age, flash, hop; arc_v3 goal; float repath; } enemy;   /* goal: the next corner of its path (0.10.19) */
 typedef struct { arc_v3 pos, vel; float life; } bullet;
 typedef struct { arc_v3 pos, vel; float life, size; uint32_t color; float spin; int flat; } particle;   /* flat: confetti */
 
@@ -37,6 +37,7 @@ static struct {
     int combo, best_combo, kills; float combo_t;
 } G;
 
+static float v_enemy_nav;   /* 0.10.19: 1 = bugs find their way round the cover on the navmesh, 0 = straight at the robot */
 static float v_speed, v_enemy_speed, v_fire_rate, v_bullet_speed, v_spawn_rate, v_sens, v_invert, v_combo_time;
 static float v_line_test;   /* 0.10.11: 1 draws a few thick, glowing vector lines over the arena */
 static float v_nan_test;    /* 0.10.12: 1 turns bloom on and draws a cube whose glow is NaN (post effects must not spread it) */
@@ -93,6 +94,7 @@ static void spawn_enemy(void) {
     if (e->kind == K_ANT && G.wave >= 2 && arc_rand_range(0, 4) == 0) e->kind = K_FLEA;
     e->hp = e->kind == K_BEETLE ? 4.0f : 1.0f; e->phase = arc_rand_rangef(0, ARC_TAU);
     e->vel = arc_v3_make(0, 0, 0); e->age = 0; e->flash = 0; e->hop = arc_rand_rangef(0.2f, 0.9f);
+    e->goal = G.pos; e->repath = 0;
 }
 static void burst(arc_v3 p, uint32_t color, int n, float speed) {   /* sparks (one colour) */
     for (int i = 0; i < n; i++) {
@@ -136,6 +138,42 @@ static bool in_cover(arc_v3 p) {
         if (dx * dx + dz * dz < g_col[i].r * g_col[i].r && p.y < g_col[i].h) return true;
     }
     return false;
+}
+/* 0.10.19 the navmesh: the arena floor as a grid of half-unit cells, the cells under the cover taken out. The bugs
+   path round the cover on it (arc_navmesh_path keeps each bug's radius from the corners). */
+static arc_navmesh g_nav; static bool g_nav_draw;
+#define NAV_CELL 0.5f
+#define NAV_N 80   /* 2 * ARENA / NAV_CELL */
+static void build_nav(void) {
+    static uint8_t cells[NAV_N * NAV_N]; arc_grid g = { NAV_N, NAV_N, cells };
+    for (int y = 0; y < NAV_N; y++) for (int x = 0; x < NAV_N; x++) {
+        float cx = -ARENA + ((float)x + 0.5f) * NAV_CELL, cz = -ARENA + ((float)y + 0.5f) * NAV_CELL; uint8_t v = 0;
+        for (int i = 0; i < g_ncol && !v; i++) { float dx = cx - g_col[i].x, dz = cz - g_col[i].z, r = g_col[i].r + 0.1f; if (dx * dx + dz * dz < r * r) v = 1; }
+        cells[y * NAV_N + x] = v;
+    }
+    g_nav = arc_navmesh_create(NULL);
+    arc_navmesh_add_grid(g_nav, &g, arc_v3_make(-ARENA, 0, -ARENA), NAV_CELL, NULL);
+    arc_navmesh_build(g_nav);
+}
+/* where a bug heads now: the robot itself when the way is clear, else the next corner of a path round the cover;
+   asked again every 0.4 s or so (spread over the bugs) and when it reaches the corner */
+static bool band_clear(arc_v3 from, arc_v3 to, float radius) {   /* a straight walk is clear for the bug's whole width */
+    arc_v3 dir = arc_v3_sub(to, from); float len = arc_v3_len(dir);
+    arc_v3 side = len > 1e-4f ? arc_v3_make(-dir.z / len * radius, 0, dir.x / len * radius) : arc_v3_make(0, 0, 0);
+    return arc_navmesh_walkable_line(g_nav, from, to, NULL) && arc_navmesh_walkable_line(g_nav, arc_v3_add(from, side), arc_v3_add(to, side), NULL) &&
+           arc_navmesh_walkable_line(g_nav, arc_v3_sub(from, side), arc_v3_sub(to, side), NULL);
+}
+static void steer_goal(enemy *e, int index, float radius, float dt) {
+    if (v_enemy_nav < 0.5f || !g_nav.id) { e->goal = G.pos; return; }
+    float gx = e->goal.x - e->pos.x, gz = e->goal.z - e->pos.z;
+    e->repath -= dt;
+    if (e->repath > 0 && gx * gx + gz * gz > 0.09f) return;
+    e->repath = 0.35f + (float)(index % 8) * 0.02f;
+    arc_v3 from = arc_v3_make(e->pos.x, 0, e->pos.z), to = arc_v3_make(G.pos.x, 0, G.pos.z);
+    if (band_clear(from, to, radius)) { e->goal = G.pos; return; }
+    arc_v3 pts[8]; int n = arc_navmesh_path(g_nav, from, to, radius, pts, 8); if (n > 8) n = 8;
+    e->goal = n >= 2 ? pts[1] : G.pos;
+    for (int k = n - 1; k >= 2; k--) if (band_clear(from, pts[k], radius * 0.75f)) { e->goal = pts[k]; break; }   /* skip corners it can cut (the path keeps the full radius already) */
 }
 static void build_colliders(void) {
     g_ncol = 0;
@@ -194,6 +232,7 @@ static void init(void) {
     arc_var("mouse.sensitivity", &v_sens, 1.0f);   /* 0.10.18 */
     arc_var("mouse.invert", &v_invert, 0.0f);
     arc_var("combo.time", &v_combo_time, 1.6f);
+    arc_var("enemy.nav", &v_enemy_nav, 1.0f);   /* 0.10.19 */
     arc_var("line_test", &v_line_test, 0.0f);
     arc_var("nan_test", &v_nan_test, 0.0f);
     arc_var("text_test", &v_text_test, 0.0f);
@@ -216,6 +255,7 @@ static void init(void) {
     m_key = arc_mesh_cube(0xD0A040);
     const char *b = arc_arg_value("bench"); if (b) G.bench = atoi(b);
     build_colliders();
+    build_nav();
     g_art = find_assets();
     if (g_art) load_art();
     else {   /* code-made sounds (as SWARM had) */
@@ -345,11 +385,14 @@ static void tick(void) {
             e->age += dt; e->flash = arc_maxf(0, e->flash - dt);
             arc_v3 to = arc_v3_sub(G.pos, e->pos); to.y = 0;
             float d = arc_v3_len(to);
+            steer_goal(e, i, e->kind == K_BEETLE ? 0.65f : 0.45f, dt);   /* 0.10.19: round the cover */
+            arc_v3 way = arc_v3_sub(e->goal, e->pos); way.y = 0;
+            if (arc_v3_len(way) < 0.01f) way = to;
             if (e->kind == K_FLEA) {   /* hops: still on the ground, then a leap toward the robot */
                 e->hop -= dt;
                 if (e->hop <= 0) {
                     float side = arc_rand_rangef(-1.5f, 1.5f);
-                    arc_v3 dir = arc_v3_norm(to);
+                    arc_v3 dir = arc_v3_norm(way);
                     e->vel = arc_v3_add(arc_v3_scale(dir, v_enemy_speed * 2.4f), arc_v3_scale(arc_v3_make(-dir.z, 0, dir.x), side));
                     e->hop = 0.95f; e->phase = 0;
                 }
@@ -357,7 +400,7 @@ static void tick(void) {
                 if (e->phase > 0.45f) e->vel = arc_v3_scale(e->vel, arc_maxf(0, 1 - dt * 12));
             } else {
                 float sp = v_enemy_speed * (e->kind == K_BEETLE ? 0.6f : 1.0f) * (1.0f + (float)G.wave * 0.04f);
-                arc_v3 want = arc_v3_scale(arc_v3_norm(to), sp);
+                arc_v3 want = arc_v3_scale(arc_v3_norm(way), sp);
                 e->phase += dt * 3;
                 want = arc_v3_add(want, arc_v3_make(cosf(e->phase) * 0.8f, 0, sinf(e->phase) * 0.8f));
                 e->vel = arc_v3_lerp(e->vel, want, arc_minf(1, dt * 3));
@@ -527,6 +570,13 @@ static void draw_world_toybox(arc_v3 p, float alpha) {
             arc_draw_mesh_tinted(mm, arc_m4_trs_y(arc_v3_make(ep.x, 0.5f + hy, ep.z), yaw, arc_v3_scale(sc, s)), 0xFFFFFF, 0, 0.1f, e->flash > 0 ? 0.9f : 0);
         }
     }
+    if (g_nav_draw && g_nav.id) {   /* 0.10.19 debugging: the walkable area and each bug's next corner */
+        arc_navmesh_draw(g_nav, 0x2060FF);
+        for (int i = 0; i < G.enemies.cap; i++) if (arc_pool_alive(&G.enemies, i)) {
+            enemy *e = (enemy *)arc_pool_at(&G.enemies, i);
+            arc_draw_line(arc_v3_make(e->pos.x, 0.3f, e->pos.z), arc_v3_make(e->goal.x, 0.3f, e->goal.z), 0xFF40FF);
+        }
+    }
     for (int i = 0; i < G.bullets.cap; i++) {   /* corks */
         if (!arc_pool_alive(&G.bullets, i)) continue;
         bullet *b = (bullet *)arc_pool_at(&G.bullets, i);
@@ -679,6 +729,16 @@ static void dump(arc_json *j) {
     arc_json_num_k(j, "hitstop", G.hitstop); arc_json_num_k(j, "shake", G.shake);
     arc_json_obj_k(j, "kinds"); for (int k = 0; k < K_KINDS; k++) arc_json_int_k(j, names[k], count[k]); arc_json_end(j);
     arc_json_bool_k(j, "music", g_music.id && arc_music_playing(g_music));
+    arc_json_int_k(j, "nav_triangles", g_nav.id ? arc_navmesh_triangles(g_nav) : 0);   /* 0.10.19 */
+    arc_json_arr_k(j, "bugs");   /* each bug (up to 16): where it is and the corner it heads for */
+    for (int n = 0, i = 0; i < G.enemies.cap && n < 16; i++) {
+        if (!arc_pool_alive(&G.enemies, i)) continue;
+        enemy *e = (enemy *)arc_pool_at(&G.enemies, i);
+        arc_json_obj(j); arc_json_str_k(j, "kind", names[e->kind]); arc_json_num_k(j, "x", e->pos.x); arc_json_num_k(j, "z", e->pos.z);
+        arc_json_num_k(j, "dist", arc_v3_dist(arc_v3_make(e->pos.x, 0, e->pos.z), arc_v3_make(G.pos.x, 0, G.pos.z)));
+        arc_json_num_k(j, "goal_x", e->goal.x); arc_json_num_k(j, "goal_z", e->goal.z); arc_json_end(j); n++;
+    }
+    arc_json_end(j);
 }
 
 /* snapshots: lets agents `seek` backwards, `rewind`, `state_save` / `state_load` (and `state_check` tests it) */
@@ -723,6 +783,7 @@ static bool command(const char *name, int argc, const char **argv) {
     if (!strcmp(name, "god")) { G.god = argc ? atoi(argv[0]) != 0 : !G.god; return true; }
     if (!strcmp(name, "reset")) { reset(); return true; }
     if (!strcmp(name, "look") && argc >= 1) { G.cam_yaw = arc_wrap_angle((float)atof(argv[0]) / 57.29578f); if (argc >= 2) G.cam_pitch = arc_clampf((float)atof(argv[1]) / 57.29578f, 0.08f, 1.25f); return true; }   /* 0.10.18: look YAW_DEG [PITCH_DEG] */
+    if (!strcmp(name, "navdraw")) { g_nav_draw = argc ? atoi(argv[0]) != 0 : !g_nav_draw; return true; }   /* 0.10.19: show the navmesh and where each bug heads */
     if (!strcmp(name, "capture")) { G.captured = argc ? atoi(argv[0]) != 0 : !G.captured; return true; }
     if (!strcmp(name, "set") && argc >= 2 && !strcmp(argv[0], "demo_setting")) { G.demo_setting = atoi(argv[1]); return true; }   /* 0.10.12: shadowed by ARC's set */
     return false;

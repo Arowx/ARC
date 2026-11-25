@@ -4,7 +4,9 @@ rem   build.bat                 -> build\demo.exe   (samples\demo\demo.c, Direct
 rem   build.bat path\game.c     -> build\game.exe
 rem   build.bat test            -> runs the headless self-tests; full log in build\test.log, summary at the end
 rem   build.bat web [game.c]    -> build\web\game.html (+ .js .wasm), WebGL2 (0.9.6; needs emsdk: emcc on PATH, in EMSDK,
-rem                                C:\emsdk or %USERPROFILE%\emsdk). Serve the folder (python -m http.server) and open it.
+rem                                C:\emsdk or %USERPROFILE%\emsdk), then asks "Serve ... and open it in the browser now?
+rem                                [Y/N]" (0.10.19; No after 15 s; ARC_NO_LAUNCH=1 never asks): tools\web_serve.py
+rem   build.bat serve [game.c]  -> serve build\web and open the page in the browser (Ctrl+C stops the server)
 rem   build.bat post-d3d        -> the post test in a window on Direct3D 11 (not the software renderer), standard depth then
 rem                                reversed (which is compared with standard); pictures in build\postd3d
 rem   build.bat relay           -> build\arc_relay.exe, the online host for turn-based sessions (0.8.5, docs\RELAY.md)
@@ -16,6 +18,7 @@ setlocal
 cd /d "%~dp0"
 if not exist build mkdir build
 if /i "%1"=="web" goto web
+if /i "%1"=="serve" goto serve
 rem Find the MSVC compiler: use it if it's already on PATH, otherwise locate Visual Studio with vswhere and
 rem load vcvars64.bat (so this works from plain PowerShell or cmd too).
 where cl >nul 2>nul && goto :have_cl
@@ -189,6 +192,13 @@ move /y build\hot\game_new.dll build\game.dll >nul
 echo built build\game.dll  (run build\arc_host.exe; build again to reload the code)
 exit /b 0
 
+:serve
+set "GAME=%~2"
+if "%GAME%"=="" set GAME=samples\demo\demo.c
+for %%F in ("%GAME%") do set NAME=%%~nF
+if not exist build\web\%NAME%.html (echo build\web\%NAME%.html not built yet - run build.bat web %GAME% & exit /b 1)
+goto web_serve
+
 rem ---- web: Emscripten, the same flags as build.sh web (emcc.bat, so every call is "call emcc") ----
 :web
 set "GAME=%~2"
@@ -210,7 +220,16 @@ set "PRELOAD="
 if exist assets set "PRELOAD=--preload-file assets"
 if not exist assets if exist samples\demo\assets if /i "%GAME%"=="samples\demo\demo.c" set "PRELOAD=--preload-file samples/demo/assets"
 call emcc -std=c11 -Iinclude -Wall -O2 -ffp-contract=off "%GAME%" src\arc.c -o build\web\%NAME%.html --shell-file web\shell.html -sUSE_WEBGL2=1 -sMIN_WEBGL_VERSION=2 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=268435456 "-sEXPORTED_FUNCTIONS=_main,_malloc,_free,_arc_web_audio_fill,_arc_web_command" "-sEXPORTED_RUNTIME_METHODS=lengthBytesUTF8,stringToUTF8,HEAPF32" %PRELOAD% || exit /b 1
-echo built build\web\%NAME%.html - serve the folder: cd build\web ^&^& python -m http.server 8000, then open http://localhost:8000/%NAME%.html
+echo built build\web\%NAME%.html
+rem ARC 0.10.19: offer to serve it and open the browser (No after 15 s; never with ARC_NO_LAUNCH; "build.bat serve" serves again)
+if defined ARC_NO_LAUNCH (echo serve it: python tools\web_serve.py build\web --open %NAME%.html & exit /b 0)
+choice /c YN /n /t 15 /d N /m "Serve build\web and open %NAME%.html in the browser now? [Y/N] "
+if errorlevel 2 (echo serve it later: build.bat serve %GAME% & exit /b 0)
+:web_serve
+set "PY=python"
+where python >nul 2>nul
+if errorlevel 1 set "PY=py -3"
+%PY% tools\web_serve.py build\web --open %NAME%.html
 exit /b 0
 
 rem ---- the post test on Direct3D 11: standard depth, then reversed compared with it ----

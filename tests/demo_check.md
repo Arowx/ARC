@@ -115,3 +115,31 @@ game samples/demo/demo.c
 do spawn_at 0 -5 ant; tap SPACE; step 12; state_check
 expect game.kills == 1
 ```
+
+## 0.10.19: bugs find their way round the cover on the navmesh
+
+A beetle right behind an alphabet block reaches the robot (it went round), and so does an ant behind the drum.
+
+```arc-check
+game samples/demo/demo.c
+args --set spawn.rate=0.001
+do god 1; spawn_at 0 13.5 beetle; step 600
+expect game.nav_triangles > 10000
+expect game.bugs[kind=beetle].dist < 3
+```
+
+```arc-check
+game samples/demo/demo.c
+args --set spawn.rate=0.001
+do god 1; spawn_at 6.5 -11.5 ant; step 300
+expect game.bugs[kind=ant].dist < 2
+```
+
+With `enemy.nav 0` (straight at the robot, as 0.10.18 did) the same beetle stays stuck behind the block.
+
+```arc-check
+game samples/demo/demo.c
+args --set spawn.rate=0.001 --set enemy.nav=0
+do god 1; spawn_at 0 13.5 beetle; step 600
+expect game.bugs[kind=beetle].dist > 8
+```

@@ -421,7 +421,10 @@ int arc_navmesh_path(arc_navmesh h, arc_v3 from, arc_v3 to, float radius, arc_v3
                 int n = m->t[c].n[k]; if (n < 0 || m->closed[n] == m->gen) continue;
                 arc_v3 a = m->v[m->t[c].v[k]], b = m->v[m->t[c].v[(k + 1) % 3]];
                 float el = navm_d2(a, b);
-                if (el < 2 * radius) continue;   /* too narrow for this agent */
+                /* too narrow for this agent: only a gap between two outline points is a real gap. 0.10.19: an edge
+                   with a free end (inside the walkable area) carries on into more floor, so on a fine grid (half-unit
+                   cells from add_grid) every short inner edge no longer blocks a wider agent */
+                if (el < 2 * radius && m->vborder[m->t[c].v[k]] && m->vborder[m->t[c].v[(k + 1) % 3]]) continue;
                 arc_v3 mid = navm_cross_point(m->pt[c], e, a, b, el > 0 ? radius / el : 0.5f);
                 float g = m->g[c] + navm_d2(m->pt[c], mid);
                 if (n == te) g += navm_d2(mid, e);
@@ -447,7 +450,7 @@ int arc_navmesh_path(arc_navmesh h, arc_v3 from, arc_v3 to, float radius, arc_v3
         if (radius > 0) {
             float l = arc_v3_len(arc_v3_sub(q, p));
             if (l > 1e-6f) {
-                arc_v3 d = arc_v3_scale(arc_v3_sub(q, p), radius / l);
+                arc_v3 d = arc_v3_scale(arc_v3_sub(q, p), fminf(radius, l * 0.95f) / l);   /* 0.10.19: never past the other end */
                 if (m->vborder[ia]) p = arc_v3_add(p, d);
                 if (m->vborder[ib]) q = arc_v3_sub(q, d);
             }

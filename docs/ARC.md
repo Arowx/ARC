@@ -82,7 +82,7 @@ older game's scripts up to date (the old ones are kept as `build.bat.old` / `bui
 web page in `web/shell.html`; ARC's default shows a progress bar (no words), uses the game's title for the tab and
 stops Space, Tab, arrows and Page keys from scrolling the page around it.
 
-**Running a web build.** Serve the folder over HTTP (`python -m http.server -d build/web`); browsers won't load WASM from `file://`. URL query arguments become `argv`, for example `demo.html?--seed=3&--mute`.
+**Running a web build.** Serve the folder over HTTP (`build.bat web` / `./build.sh web` offer to; or `python tools/web_serve.py build/web`); browsers won't load WASM from `file://`. URL query arguments become `argv`, for example `demo.html?--seed=3&--mute`.
 
 **Debug builds.** `DEBUG=1 ./build.sh headless` builds with AddressSanitizer and UndefinedBehaviorSanitizer. The sample and the self-test run clean.
 

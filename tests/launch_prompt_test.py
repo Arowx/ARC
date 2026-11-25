@@ -22,6 +22,13 @@ try:
     check(len(name) == 1 and 'launch_game.exe' in name[0] and '/d "%CD%\\build"' in name[0], 'build.bat does not start build\\<name>.exe in build\\: %s' % name)
     check('\r\n' in bat, 'build.bat lost its CRLF line ends')
     check('  run)' in sh and 'exec "./$name"' in sh, 'build.sh has no run target')
+    # 0.10.19: web builds offer to serve the page and open the browser
+    check('choice /c YN /n /t 15 /d N /m "Serve Launch Test and open it in the browser now? [Y/N] "' in bat, 'build.bat web does not offer to serve it')
+    check('if /i "%1"=="serve" goto serve' in bat and 'tools\\web_serve.py" build\\web --open index.html' in bat, 'build.bat has no serve target')
+    check(bat.index('ARC_NO_LAUNCH (echo serve it') < bat.index('Serve Launch Test'), 'build.bat web asks even with ARC_NO_LAUNCH')
+    check('  serve)' in sh and 'web_serve.py" build/web --open index.html' in sh, 'build.sh has no serve target')
+    root_bat = open(os.path.join(ROOT, 'build.bat'), encoding='utf-8').read()
+    check('Serve build\\web and open %NAME%.html in the browser now? [Y/N]' in root_bat and ':serve' in root_bat, "ARC's build.bat web does not offer to serve")
     # build.sh run, for real, with the compiler swapped for a stub that writes a game which prints a line
     stub = os.path.join(d, 'cc')
     open(stub, 'w').write('#!/bin/sh\nout=""\nwhile [ $# -gt 0 ]; do [ "$1" = -o ] && { out="$2"; shift; }; shift; done\n'
@@ -32,6 +39,20 @@ try:
         check(r.returncode == 0 and 'launched from build' in r.stdout, 'build.sh run did not start the game in build/: ' + (r.stdout + r.stderr)[-300:])
     mcp = open(os.path.join(ROOT, 'tools', 'arc_mcp.py'), encoding='utf-8').read()
     check("ARC_NO_LAUNCH='1'" in mcp, 'arc_mcp.py builds without ARC_NO_LAUNCH')
+    # tools/web_serve.py serves the folder with the right types (and stops after one page with --once)
+    import threading, time, urllib.request
+    w = os.path.join(d, 'web'); os.makedirs(w); open(os.path.join(w, 'index.html'), 'w').write('<p>hi</p>'); open(os.path.join(w, 'g.wasm'), 'wb').write(b'\0asm')
+    p = subprocess.Popen([sys.executable, os.path.join(ROOT, 'tools', 'web_serve.py'), w, '--port', '18765', '--no-open'], stdout=subprocess.PIPE, text=True)
+    try:
+        line = p.stdout.readline(); port = int(line.split('localhost:')[1].split('/')[0]) if 'localhost:' in line else 0
+        r1 = urllib.request.urlopen('http://127.0.0.1:%d/index.html' % port, timeout=5)
+        r2 = urllib.request.urlopen('http://127.0.0.1:%d/g.wasm' % port, timeout=5)
+        check(b'hi' in r1.read() and r2.headers.get('Content-Type') == 'application/wasm' and 'no-cache' in (r2.headers.get('Cache-Control') or ''),
+              'web_serve.py serves the wrong things: %s %s' % (r2.headers.get('Content-Type'), r2.headers.get('Cache-Control')))
+    except Exception as e:
+        check(False, 'web_serve.py: %s' % e)
+    finally:
+        p.terminate(); p.wait(5)
 finally:
     shutil.rmtree(d, ignore_errors=True)
 for f in fails: print('ARC error launch prompt: ' + f)

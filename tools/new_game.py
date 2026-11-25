@@ -18,8 +18,8 @@ The new project gets:
     tests/acceptance.md  with --template: runnable checks of the template's rules (tools/arc_check.py)
     release.json     settings for tools/arc_release.py (fill in "itch": "user/game")
     assets/          files the game loads at runtime (copied next to the exe / packed into the web build)
-    build.bat        Windows (Visual Studio):  build.bat [run|headless|web|release] (plain: offers to launch)
-    build.sh         Linux/WSL/macOS shell:    ./build.sh [linux|headless|win|web|release]
+    build.bat        Windows (Visual Studio):  build.bat [run|headless|web|serve|release] (plain and web: offer to launch)
+    build.sh         Linux/WSL/macOS shell:    ./build.sh [linux|run|headless|win|web|serve|release]
     AGENTS.md        instructions for AI agents working on this game
     arc.txt          where ARC lives (one line); build scripts read it
     .mcp.json        starts ARC's MCP server for Claude Code and other MCP clients (0.10.10, docs/MCP.md)
@@ -46,7 +46,9 @@ rem   build.bat            -> build\{name}.exe   (Direct3D 11 window; --headless
 rem                           "Launch {title} now? [Y/N]" (No after 15 s; set ARC_NO_LAUNCH=1 never to ask)
 rem   build.bat run        -> build\{name}.exe, then launch it without asking
 rem   build.bat headless   -> build\{name}_headless.exe (no window code)
-rem   build.bat web        -> build\web\index.html (+ .js .wasm .data; needs emsdk: on PATH, in EMSDK, or C:\emsdk)
+rem   build.bat web        -> build\web\index.html (+ .js .wasm .data; needs emsdk: on PATH, in EMSDK, or C:\emsdk), then
+rem                           asks "Serve it and open it in the browser now? [Y/N]" (No after 15 s; not with ARC_NO_LAUNCH)
+rem   build.bat serve      -> serve build\web and open index.html in the browser (<ARC>\tools\web_serve.py; Ctrl+C stops it)
 rem   build.bat release    -> both, then dist\{zipname}-windows.zip (exe + assets) and dist\{zipname}-web.zip
 rem                           (files at the top level, ready for itch.io "This file will be played in the browser")
 rem Web packs (ARC 0.8.6, <ARC>\docs\WEB.md): WEB_PACKS lists folders of assets\ that become packs next to index.html,
@@ -68,6 +70,7 @@ set HASCPP=0
 for %%F in (src\*.c) do set CSRCS=!CSRCS! "%%F"
 for %%F in (src\*.cpp) do (set CPPSRCS=!CPPSRCS! "%%F"& set HASCPP=1)
 if /i "%1"=="web" goto web_only
+if /i "%1"=="serve" goto serve
 if /i "%1"=="release" goto release
 call :find_cl
 if errorlevel 1 exit /b 1
@@ -89,6 +92,16 @@ exit /b 0
 :web_only
 call :build_web
 if errorlevel 1 exit /b 1
+rem ---- ARC 0.10.19: offer to serve the web build and open the browser (never in scripts: ARC_NO_LAUNCH, or no answer in 15 s) ----
+if defined ARC_NO_LAUNCH (echo serve it: build.bat serve & exit /b 0)
+choice /c YN /n /t 15 /d N /m "Serve {title} and open it in the browser now? [Y/N] "
+if errorlevel 2 (echo serve it later: build.bat serve & exit /b 0)
+:serve
+if not exist build\web\index.html (echo build\web\index.html not built yet - run build.bat web & exit /b 1)
+set "PY=python"
+where python >nul 2>nul
+if errorlevel 1 set "PY=py -3"
+%PY% "%ARC%\tools\web_serve.py" build\web --open index.html
 exit /b 0
 
 :release
@@ -206,9 +219,10 @@ exit /b 0
 '''
 
 BUILD_SH = r'''#!/usr/bin/env sh
-# Build {title} with ARC.   ./build.sh [linux|run|headless|win|web|release]   (default linux)
+# Build {title} with ARC.   ./build.sh [linux|run|headless|win|web|serve|release]   (default linux)
 #   run      -> the linux build, then start it (ARC 0.10.15)
-#   web      -> build/web/index.html (+ .js .wasm .data)
+#   web      -> build/web/index.html (+ .js .wasm .data), then offers to serve it (ARC 0.10.19; a terminal only)
+#   serve    -> serve build/web and open index.html in the browser (<ARC>/tools/web_serve.py; Ctrl+C stops it)
 #   release  -> win + web, then dist/{zipname}-windows.zip (exe + assets) and dist/{zipname}-web.zip (for itch.io)
 # Web packs (ARC 0.8.6, <ARC>/docs/WEB.md): WEB_PACKS lists folders of assets/ that become packs next to index.html,
 # fetched while the game runs (queued loads of their files wait for them); the rest is preloaded and cached in the
@@ -264,7 +278,14 @@ case "$target" in
             echo "built $target"; cd build && exec "./$name" ;;
   headless) native "${{CC:-cc}}" "${{CXX:-c++}}" "build/${{name}}_headless" "-D_GNU_SOURCE -DARC_HEADLESS_ONLY" "-lm"; copy_assets build ;;
   win)      winres; native x86_64-w64-mingw32-gcc x86_64-w64-mingw32-g++ "build/$name.exe" "" "$WRES -static -ld3d11 -ldxguid -lwinmm -luuid"; copy_assets build ;;
-  web)      web ;;
+  web)      web
+            if [ -n "$ARC_NO_LAUNCH" ] || [ ! -t 0 ] || [ ! -t 1 ]; then echo "built web; serve it: ./build.sh serve"; exit 0; fi
+            printf 'Serve {title} and open it in the browser now? [y/N] '; ans=""
+            read -t 15 ans 2>/dev/null || read ans || true; echo
+            case "$ans" in y|Y|yes|YES) exec python3 "$ARC/tools/web_serve.py" build/web --open index.html ;; esac
+            echo "serve it later: ./build.sh serve" ;;
+  serve)    [ -f build/web/index.html ] || {{ echo "build/web/index.html not built yet - run ./build.sh web"; exit 1; }}
+            exec python3 "$ARC/tools/web_serve.py" build/web --open index.html ;;
   release)  winres; native x86_64-w64-mingw32-gcc x86_64-w64-mingw32-g++ "build/$name.exe" "" "$WRES -static -ld3d11 -ldxguid -lwinmm -luuid"
             web
             rm -rf build/release && mkdir -p build/release/win dist

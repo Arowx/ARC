@@ -204,7 +204,7 @@ as for games with `draw()`.
   lamp states batch together. `st.emissive_mask` gives a mask for one draw instead of the mesh's own. Check it with
   a `shot` (`samples/lights`, `glow_mask on`, shows it).
 - **Building:** a game's plain `build.bat` asks to launch it (No after 15 s); `build.bat run` launches without
-  asking, and `./build.sh run` does the same on Linux. Set `ARC_NO_LAUNCH=1` in scripts that call a plain `build.bat`.
+  asking, and `./build.sh run` does the same on Linux. Set `ARC_NO_LAUNCH=1` in scripts that call a plain `build.bat`. 0.10.19: `build.bat web` / `./build.sh web` offer to serve the page and open the browser the same way (`tools/web_serve.py`); `build.bat serve` / `./build.sh serve` serve the last web build.
 
 ## Getting up to speed and checking fast (0.10.16)
 
@@ -236,7 +236,7 @@ as for games with `draw()`.
 - juice (hit-stop, shake, flashes, pop-ins, confetti, `arc_popup_text`, a combo meter);
 - Ludo art with a code-made fallback when the assets are missing.
 
-Its `look 180` / `capture 1` / `spawn_at 0 -5 beetle` commands set up test scenes. ARC's own checks still use its
+Its bugs path round the cover on a navmesh built from a half-unit grid (0.10.19; `navdraw` shows it, `enemy.nav 0` turns it off). Its `look 180` / `capture 1` / `spawn_at 0 -5 beetle` commands set up test scenes. ARC's own checks still use its
 `*_test` tunables.
 
 ## Asking ARC for a change (0.10.13)
