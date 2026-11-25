@@ -1,0 +1,124 @@
+{
+ "version": 1,
+ "assets": {
+  "fonts/fredoka_sdf48.arcf": {
+   "made": "Fredoka (google/fonts, OFL: fonts/OFL.txt) instanced at weight 600 with fontTools, then tools/font_bake.py --sizes 48 --sdf --name fredoka"
+  },
+  "meshes/ant.arcm": {
+   "source": "ant.glb",
+   "options": [
+    "--footprint",
+    "0.9",
+    "--yaw",
+    "30",
+    "--texture-size",
+    "512"
+   ],
+   "prompt": "clockwork toy ant, glossy green plastic, brass wind-up key (Ludo create3DModelImage + create3DModel)"
+  },
+  "meshes/beetle.arcm": {
+   "source": "beetle.glb",
+   "options": [
+    "--footprint",
+    "1.3",
+    "--yaw",
+    "30",
+    "--texture-size",
+    "512"
+   ],
+   "prompt": "chunky clockwork toy beetle, purple and gold plastic shell (Ludo create3DModelImage + create3DModel)"
+  },
+  "meshes/block.arcm": {
+   "source": "block.glb",
+   "options": [
+    "--texture-size",
+    "512",
+    "--fit",
+    "1.2",
+    "1.2",
+    "1.2"
+   ],
+   "prompt": "wooden toy alphabet block, painted letters (Ludo create3DModelImage + create3DModel)"
+  },
+  "meshes/crayon.arcm": {
+   "source": "crayon.glb",
+   "options": [
+    "--footprint",
+    "2.4",
+    "--texture-size",
+    "512"
+   ],
+   "prompt": "giant blue wax crayon lying down (Ludo create3DModelImage + create3DModel)"
+  },
+  "meshes/drum.arcm": {
+   "source": "drum.glb",
+   "options": [
+    "--footprint",
+    "1.8",
+    "--texture-size",
+    "512"
+   ],
+   "prompt": "red and yellow toy drum (Ludo create3DModelImage + create3DModel)"
+  },
+  "meshes/flea.arcm": {
+   "source": "flea.glb",
+   "options": [
+    "--footprint",
+    "0.8",
+    "--yaw",
+    "30",
+    "--texture-size",
+    "512"
+   ],
+   "prompt": "clockwork toy flea with coiled-spring legs, orange plastic (Ludo create3DModelImage + create3DModel)"
+  },
+  "meshes/player.arcm": {
+   "source": "player.glb",
+   "options": [
+    "--height",
+    "1.5",
+    "--texture-size",
+    "512"
+   ],
+   "anims": [
+    "idle.glb",
+    "run.glb",
+    "hit.glb",
+    "death.glb"
+   ],
+   "prompt": "wind-up tin toy robot, red and cream, brass key (rigged mixamo; animate3DModelPreset idle/jog/hit/death clips) (Ludo create3DModelImage + create3DModel)"
+  },
+  "music/toybox.mp3": {
+   "made": "Ludo createMusic (60 s, loop), then ffmpeg to MP3 (stereo, 96 kbit/s); played with arc_music_set_loop_fade",
+   "prompt": "upbeat playful toy-box action music: toy piano, glockenspiel, ukulele, kazoo melody, bouncy bass and snappy drums"
+  },
+  "sfx/hit.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg: silence trimmed, loudnorm -16 LUFS, MP3 (mono, 96 kbit/s)",
+   "prompt": "hard plastic toy clack, a small toy being hit"
+  },
+  "sfx/hurt.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg: silence trimmed, loudnorm -16 LUFS, MP3 (mono, 96 kbit/s)",
+   "prompt": "tin toy robot hurt, metallic clank with a sad descending wind-down whirr"
+  },
+  "sfx/kill.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg: silence trimmed, loudnorm -16 LUFS, MP3 (mono, 96 kbit/s)",
+   "prompt": "cartoon spring sproing boing with a tiny clockwork rattle, a wind-up toy breaking apart"
+  },
+  "sfx/pickup.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg: silence trimmed, loudnorm -16 LUFS, MP3 (mono, 96 kbit/s)",
+   "prompt": "cheerful toy xylophone pickup chime, two quick rising notes"
+  },
+  "sfx/shoot.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg: silence trimmed, loudnorm -16 LUFS, MP3 (mono, 96 kbit/s)",
+   "prompt": "toy pop-gun shot, short plastic cork pop"
+  },
+  "sfx/wave.mp3": {
+   "made": "Ludo createSoundEffect, then ffmpeg: silence trimmed, loudnorm -16 LUFS, MP3 (mono, 96 kbit/s)",
+   "prompt": "toy music box and tin trumpet fanfare, a new wave starting"
+  },
+  "textures/floor.jpg": {
+   "made": "Ludo createImage (image_type texture, Flat Design, top-down), scaled to 512 px",
+   "prompt": "seamless children's play mat floor texture seen from directly above: grey cartoon roads with white dashed lines on bright green grass, a faint square grid, small painted crosswalks"
+  }
+ }
+}

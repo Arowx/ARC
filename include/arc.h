@@ -55,8 +55,8 @@ extern "C" {
 #define ARC_GAME_API
 #endif
 
-#define ARC_VERSION "0.10.17"
-#define ARC_VERSION_NUM 1017  /* major*10000 + minor*100 + patch; games can #if ARC_VERSION_NUM < ... #error */
+#define ARC_VERSION "0.10.18"
+#define ARC_VERSION_NUM 1018  /* major*10000 + minor*100 + patch; games can #if ARC_VERSION_NUM < ... #error */
 /* 0.9.8 feature macros: one per feature group, so a game (or its CMake) can #if on what this arc.h has instead of
    searching it for function names. The value is the ARC_VERSION_NUM it arrived in. New groups are added here with
    each release; a macro is never removed while its feature stays. */

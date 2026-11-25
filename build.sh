@@ -29,6 +29,7 @@ case "$target" in
   win)      x86_64-w64-mingw32-gcc -std=c11 -Wall -Wextra -O2 -ffp-contract=off -Iinclude "$game" src/arc.c -o "build/$name.exe" -static -ld3d11 -ldxguid -lwinmm -luuid ;;
   web)      mkdir -p build/web
             PRE=""; [ -d assets ] && PRE="--preload-file assets"
+            gdir=$(dirname "$game"); [ -z "$PRE" ] && [ "$gdir" != . ] && [ -d "$gdir/assets" ] && PRE="--preload-file $gdir/assets"   # 0.10.18: a sample's own assets (the demo)
             [ -n "$WEB_CACHE" ] && [ -d assets ] && PRE="$PRE --use-preload-cache"
             if [ -n "$WEB_PACKS" ] && [ -d assets ]; then   # 0.8.6: a small first package + packs next to the page
               python3 tools/web_packs.py assets build/web build/webstage --packs "$WEB_PACKS"
@@ -88,7 +89,7 @@ case "$target" in
             ${CC:-cc} $CFLAGS -D_GNU_SOURCE -DARC_HEADLESS_ONLY samples/demo/demo.c src/arc.c -o build/demo_headless -lm   # 0.10.11 lines and touch (Vector Trader)
             python3 tools/arc_request.py tests/offset2d_check.md --game test --dry-run > /dev/null   # 0.10.13 request tool (no network)
             python3 tests/launch_prompt_test.py || exit 1   # 0.10.15 build.bat asks to launch the game
-            for c in line touch nan text save_path command_clash offset2d lines2d music_loop scroll_panel; do python3 tools/arc_check.py tests/${c}_check.md --exe build/demo_headless > build/${c}_check.txt || { cat build/${c}_check.txt; exit 1; }; tail -1 build/${c}_check.txt; done
+            for c in line touch nan text save_path command_clash offset2d lines2d music_loop scroll_panel demo; do python3 tools/arc_check.py tests/${c}_check.md --exe build/demo_headless > build/${c}_check.txt || { cat build/${c}_check.txt; exit 1; }; tail -1 build/${c}_check.txt; done
             python3 tests/line_width_test.py build/demo_headless || exit 1
             python3 tests/touch_replay_test.py build/demo_headless || exit 1
             rc=0; python3 tools/arc_check.py tools/tests/two_blocks.md > build/two_blocks.txt || rc=$?   # 0.10.12: every block runs; one fails on purpose

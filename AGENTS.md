@@ -228,6 +228,17 @@ as for games with `draw()`.
   scrolling and `contains` after. Scroll with `mouse X Y; press MOUSE_LEFT; step 1; mouse X Y2; step 1; release
   MOUSE_LEFT; step 2`, or `mouse X Y; wheel -5; step 2`. Widgets partly in view carry `"clipped": true`.
 
+## The demo, TOY BOX BLITZ (0.10.18)
+
+`samples/demo/demo.c` is a small finished game to copy from:
+- mouse look (`arc_mouse_capture` on a click, `arc_mouse_delta` turning a third-person camera, ESC to let go);
+- a skinned, animated player with outlines;
+- juice (hit-stop, shake, flashes, pop-ins, confetti, `arc_popup_text`, a combo meter);
+- Ludo art with a code-made fallback when the assets are missing.
+
+Its `look 180` / `capture 1` / `spawn_at 0 -5 beetle` commands set up test scenes. ARC's own checks still use its
+`*_test` tunables.
+
 ## Asking ARC for a change (0.10.13)
 
 When the game needs something ARC doesn't do, write the request in the `docs/REQUESTS.md` template, with an

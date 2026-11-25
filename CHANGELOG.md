@@ -2,6 +2,40 @@
 
 Version numbers follow `ARC_VERSION` in `include/arc.h`. Games can check it at compile time.
 
+## 0.10.18 — 25 Nov 2026: the demo becomes TOY BOX BLITZ
+
+From Allan's request (#13): `samples/demo` (SWARM) is remade to show off what ARC does now. You play a wind-up tin
+robot defending a child's bedroom floor from clockwork bugs. No engine changes. New check: `tests/demo_check.md` (11 blocks, in
+`build test`).
+
+- **Art (Ludo, imported with `arc_import.py`, 3.5 MB in `samples/demo/assets/`, `manifest.json` says how):**
+  - the tin robot, rigged, with idle, run, hit and death clips;
+  - three bugs: the ant (swarms), the beetle (still 4 hits), and a new flea that hops;
+  - alphabet blocks (the wall ring and cover), crayons and a toy drum;
+  - a play-mat floor texture.
+- **Look:** black cartoon outlines (`arc_mesh_style.outline`). Ludo's models are marked double-sided, so the demo sets
+  them one-sided for the outline hull. A warm desk lamp with shadows, light bloom, a touch of tilt-shift.
+- **Mouse look:**
+  - A click captures the pointer, and the mouse turns a third-person camera (yaw, and pitch within limits). The
+    gamepad's right stick turns it too.
+  - WASD and the left stick move relative to the camera. Holding the mouse button fires at the crosshair. ESC lets go.
+  - Tunables `mouse.sensitivity` and `mouse.invert`.
+  - The jump of the pointer on the click that captures it is not a turn.
+  - Keyboard-only play, `C` (the top view) and `--bench` behave as before.
+- **Juice:** hit-stop, camera shake, white hit flashes, squash-and-stretch pop-ins, recoil, sparks and confetti,
+  floating scores (`arc_popup_text`), a combo meter with a multiplier (x2 at 5 kills in a row, up to x5), a wave banner
+  and a title.
+- **Sound and font:** six Ludo sound effects played with `arc_play_var`, and a toy-box music loop. The HUD, banners
+  and title use Fredoka (OFL, from google/fonts), baked with `font_bake.py --sdf`.
+- **Kept:**
+  - every test tunable and command, and every dump field;
+  - `line_test` and `nan_test` draw SWARM's plain arena and camera, so their pixel tests read the same;
+  - without the art (`--no-assets`, or no `assets/` folder) the demo runs on the code-made shapes.
+- **New dump fields:** `theme`, `art`, `cam_yaw`, `cam_pitch`, `captured`, `cam_mode`, `combo`, `best_combo`,
+  `multiplier`, `kills`, `hitstop`, `shake`, `kinds.{ant,beetle,flea}`, `music`.
+- **New commands:** `spawn N [ant|beetle|flea]`, `spawn_at X Z [kind]`, `look YAW_DEG [PITCH_DEG]`, `capture [0|1]`.
+- **Web build:** `./build.sh web samples/demo/demo.c` (and `build.bat web`) preloads the demo's assets.
+
 ## 0.10.17 — 25 Nov 2026: scroll panels (MOLTEN BREACH)
 
 From MOLTEN BREACH's request (`incoming/moltenbreach-scroll-panels.md`): arc_ui panels taller than a phone screen can
