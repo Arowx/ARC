@@ -204,7 +204,7 @@ as for games with `draw()`.
   lamp states batch together. `st.emissive_mask` gives a mask for one draw instead of the mesh's own. Check it with
   a `shot` (`samples/lights`, `glow_mask on`, shows it).
 - **Building:** a game's plain `build.bat` asks to launch it (No after 15 s); `build.bat run` launches without
-  asking, and `./build.sh run` does the same on Linux. Set `ARC_NO_LAUNCH=1` in scripts that call a plain `build.bat`.
+  asking, and `./build.sh run` does the same on Linux. Set `ARC_NO_LAUNCH=1` in scripts that call a plain `build.bat`. 0.10.19: `build.bat web` / `./build.sh web` offer to serve the page and open the browser the same way (`tools/web_serve.py`); `build.bat serve` / `./build.sh serve` serve the last web build.
 
 ## Getting up to speed and checking fast (0.10.16)
 

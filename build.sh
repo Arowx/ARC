@@ -3,7 +3,8 @@
 #   ./build.sh linux    [game.c] [out]   X11 + OpenGL 3.3            -> build/<name>
 #   ./build.sh headless [game.c] [out]   no window code at all        -> build/<name>_headless
 #   ./build.sh win      [game.c] [out]   MinGW cross-compile, D3D11   -> build/<name>.exe
-#   ./build.sh web      [game.c] [out]   Emscripten, WebGL2           -> build/web/<name>.html
+#   ./build.sh web      [game.c] [out]   Emscripten, WebGL2           -> build/web/<name>.html, then offers to serve it
+#   ./build.sh serve    [game.c]         serve build/web and open <name>.html in the browser (tools/web_serve.py)
 #                                        WEB_PACKS="levels music" (or "*"): those folders of assets/ become packs
 #                                        fetched on demand (tools/web_packs.py, docs/WEB.md); WEB_CACHE=1: keep the
 #                                        preloaded package in IndexedDB (on with WEB_PACKS)
@@ -21,6 +22,14 @@ game=${2:-samples/demo/demo.c}
 if [ -z "$2" ] && { [ "$target" = hot ] || [ "$target" = hot-headless ]; }; then game=samples/hot/hot.c; fi
 name=${3:-$(basename "$game" .c)}
 mkdir -p build
+# 0.10.19: after a web build, offer to serve it and open the browser (a terminal only; No after 15 s; ARC_NO_LAUNCH=1 never)
+serve_now() { if command -v python3 >/dev/null 2>&1; then python3 tools/web_serve.py "$1" --open "$2"; else python tools/web_serve.py "$1" --open "$2"; fi; }
+serve_prompt() {
+  if [ -n "$ARC_NO_LAUNCH" ] || [ ! -t 0 ] || [ ! -t 1 ]; then echo "serve it: ./build.sh serve $game  (or python3 tools/web_serve.py $1 --open $2)"; return 0; fi
+  printf 'Serve %s and open %s in the browser now? [y/N] ' "$1" "$2"; ans=""
+  read -t 15 ans 2>/dev/null || read ans || true; echo
+  case "$ans" in y|Y|yes|YES) serve_now "$1" "$2" ;; *) echo "serve it later: ./build.sh serve $game" ;; esac
+}
 CFLAGS="-std=c11 -Wall -Wextra -O2 -ffp-contract=off -Iinclude"   # no fused multiply-adds: the same maths everywhere
 [ -n "$DEBUG" ] && CFLAGS="-std=c11 -Wall -Wextra -O0 -g -ffp-contract=off -fsanitize=address,undefined -Iinclude"
 case "$target" in
@@ -39,7 +48,9 @@ case "$target" in
               -sUSE_WEBGL2=1 -sMIN_WEBGL_VERSION=2 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=268435456 \
               -sEXPORTED_FUNCTIONS=_main,_malloc,_free,_arc_web_audio_fill,_arc_web_command \
               -sEXPORTED_RUNTIME_METHODS=lengthBytesUTF8,stringToUTF8,HEAPF32 \
-              $PRE ;;
+              $PRE
+            serve_prompt "build/web" "$name.html" ;;
+  serve)    serve_now "build/web" "$(basename "${2:-samples/demo/demo.c}" .c).html"; exit 0 ;;
   hot|hot-headless)
             if [ "$target" = hot ]; then HDEF=""; HLIB="-lX11 -lGL"; HN=arc_host; else HDEF="-DARC_HEADLESS_ONLY"; HLIB=""; HN=arc_host_headless; fi
             if [ ! -f "build/$HN" ] || [ src/arc.c -nt "build/$HN" ] || [ -n "$(find src include -newer "build/$HN" 2>/dev/null | head -1)" ]; then

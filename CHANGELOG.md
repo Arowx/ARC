@@ -24,6 +24,15 @@ Allan saw TOY BOX BLITZ's bugs get stuck behind cover.
   - New dump fields `nav_triangles` and `bugs[]` (kind, x, z, dist, goal), and a command `navdraw` that shows the
     navmesh and each bug's next corner.
   - Three new blocks in `tests/demo_check.md`.
+- **Web builds offer to open in the browser (Allan's ask):**
+  - `build.bat web` (ARC's and every game's) asks "Serve ... and open it in the browser now? [Y/N]" after the build.
+    It defaults to No after 15 s and never asks with `ARC_NO_LAUNCH`.
+  - Yes runs `tools/web_serve.py`, a small server: standard library only, the first free port from 8000, `.wasm` as
+    `application/wasm`, no-cache headers so a rebuild shows on reload. It opens the page; Ctrl+C stops it.
+  - `build.bat serve` serves the last web build again.
+  - `./build.sh web` asks the same in a terminal, and `./build.sh serve` serves.
+  - Existing games get the new scripts with `new_game.py <game> --update-scripts`.
+  - Checked by `tests/launch_prompt_test.py`.
 
 ## 0.10.18 — 25 Nov 2026: the demo becomes TOY BOX BLITZ
 
