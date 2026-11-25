@@ -37,7 +37,7 @@ def main():
     rpc('notifications/initialized', notify=True)
     if init['result']['serverInfo']['name'] != 'arc': bad.append('initialize')
     tools = [t['name'] for t in rpc('tools/list')['result']['tools']]
-    for want in ('arc_start', 'arc_step', 'arc_frame', 'arc_shot', 'arc_expect', 'arc_save_check'):
+    for want in ('arc_start', 'arc_step', 'arc_frame', 'arc_shot', 'arc_expect', 'arc_save_check', 'arc_run', 'arc_brief', 'arc_report'):
         if want not in tools: bad.append('no ' + want)
     if call('arc_start', exe=exe, window=window, args='--size 640x360')['isError']: bad.append('start')
     if call('arc_step', ticks=4)['isError']: bad.append('step')
@@ -51,6 +51,12 @@ def main():
         if 'run=0' not in call('arc_live', run=False)['content'][0]['text']: bad.append('live hold')
     r = call('arc_save_check', path=os.path.join(ROOT, 'build', 'mcp_test_check.md'))
     if r['isError']: bad.append('save_check')
+    if not window:   # 0.10.16 (request #12): the build -> script -> check loop in one call
+        r = call('arc_run', exe=exe, script='step 60; dump', expect=['tick >= 60'], restart=True)
+        t = r['content'][0]['text']
+        if r['isError'] or t.count('PASS') != 1 or 'FAIL' in t: bad.append('arc_run')
+        r = call('arc_run', expect=['tick == 99999'])   # a failing line: isError, and the value it found
+        if not r['isError'] or 'FAIL tick == 99999   (tick = 60)' not in r['content'][0]['text']: bad.append('arc_run fail')
     call('arc_stop')
     if rpc('ping')['result'] != {}: bad.append('ping')
     srv.stdin.close(); srv.wait(10)

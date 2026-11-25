@@ -1990,6 +1990,26 @@ ARC_API bool arc_ui_panel_offset(const char *title, float *dx, float *dy);
 ARC_API void arc_ui_set_panel_offset(const char *title, float dx, float dy);
 ARC_API bool arc_ui_panel_rect(const char *title, float *x, float *y, float *w, float *h);
 ARC_API void arc_ui_end(void);
+```
+
+0.10.17 scroll panels (MOLTEN BREACH): a panel no taller than max_h (the same units as w: scaled with the UI). Its
+   content is laid out as usual, drawn clipped to the panel and moved up by *scroll (pixels; ARC keeps it in
+   0..content height - visible height). A drag inside the panel (mouse or touch) or the wheel over it scrolls it; a
+   drag that moves more than a few pixels up or down doesn't press the widget it started on. A thin bar on the right
+   shows when the content is taller than the panel. Widgets scrolled out of view take no clicks and are left out of
+   `ui` / frame.ui (a widget partly in view is listed with its visible part and "clipped": true); keyboard and gamepad
+   focus moving to a hidden widget scrolls it into view. scroll NULL: ARC keeps the position itself. max_h <= 0: no
+   limit, the same as arc_ui_begin. Close it with arc_ui_end. arc_ui_content_height: after arc_ui_end, the last
+   panel's full height (every widget, as if it had no limit), in pixels.
+
+       static float scroll;
+       arc_ui_begin_scroll("Orders", 20, 20, 260, 200, &scroll);
+       for (int i = 0; i < n; i++) if (arc_ui_button(order_name[i])) pick(i);
+       arc_ui_end();
+
+```c
+ARC_API void arc_ui_begin_scroll(const char *title, float x, float y, float w, float max_h, float *scroll);
+ARC_API float arc_ui_content_height(void);
 ARC_API void arc_ui_columns(int n);    // the next widgets sit n to a row (1 = back to one per row)
 ARC_API void arc_ui_label(const char *text);
 ARC_API void arc_ui_labelf(const char *fmt, ...);

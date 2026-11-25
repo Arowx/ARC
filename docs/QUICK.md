@@ -53,7 +53,7 @@ arc_app arc_main(int argc, char **argv) {
 - [Scene speed-ups: cells, portals, LOD, static batches](api/graphics-scene.md) - 32 names
 - [Audio: synth effects, sound files, streamed music, 32-voice mixer](api/audio.md) - 76 names
 - [Turns and grids (time-unit scheduler, tile grid, line of sight, paths)](api/turns-and-grids.md) - 39 names
-- [UI: immediate-mode widgets (menus, settings, debug panels)](api/ui.md) - 44 names
+- [UI: immediate-mode widgets (menus, settings, debug panels)](api/ui.md) - 46 names
 - [UX: easing, screen transitions, captions, colour blindness, localisation](api/ux.md) - 42 names
 - [Collision: ray tests, a static collision world, a character controller](api/collision.md) - 18 names
 - [Physics (0.9.4): deterministic rigid bodies](api/physics.md) - 53 names
@@ -769,6 +769,8 @@ arc_app arc_main(int argc, char **argv) {
 - `arc_ui_set_panel_offset`
 - `arc_ui_panel_rect`
 - `arc_ui_end`
+- `arc_ui_begin_scroll` - 0.10.17 scroll panels (MOLTEN BREACH): a panel no taller than max_h (the same units as w:…
+- `arc_ui_content_height`
 - `arc_ui_columns` - the next widgets sit n to a row (1 = back to one per row)
 - `arc_ui_label`
 - `arc_ui_labelf`

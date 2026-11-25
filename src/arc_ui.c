@@ -9,10 +9,10 @@
 #define UI_MAX_WIDGETS 512
 #define UI_MAX_PANELS  32
 
-enum { UC_RECT, UC_LINES, UC_TEXT, UC_NINE, UC_RICH };
+enum { UC_RECT, UC_LINES, UC_TEXT, UC_NINE, UC_RICH, UC_CLIP };   /* UC_CLIP: w, h > 0 clips what follows to x, y, w, h; 0 ends it */
 typedef struct { uint8_t kind; float x, y, w, h; uint32_t color; int text; } ui_cmd;   /* text: w = scale (0 = the theme's); UC_NINE: text = skin part */
 typedef struct { arc_texture t; float src, dst; } ui_skin;
-typedef struct { char label[64]; const char *kind; float x, y, w, h; float value; bool focused; char text[64]; } ui_widget_info;
+typedef struct { char label[64]; const char *kind; float x, y, w, h; float value; bool focused, clipped; char text[64]; } ui_widget_info;
 typedef struct { uint32_t id; float dx, dy; bool used; } ui_panel_rec;
 /* 0.7 */
 #define UI_GHOST_CMDS 256
@@ -62,6 +62,12 @@ static struct {
 /* 0.10.1 layout state (not part of saved UI state) */
 static struct { float ref_w, ref_h, smin, smax; bool anchored; float scale_save, shrink, ds_full; uint32_t anchored_id;
                 struct { uint32_t id; float h; } last[32]; } UL;
+/* 0.10.17 scroll panels: the open one (this tick) and what is kept between ticks (saved with the UI state) */
+static struct {
+    bool on; float *scroll; float vis_top, vis_bot, max_px;
+    struct { uint32_t drag_panel, focus_id; float sx, sy, s0; uint8_t dragging, undecided, pad_[2];
+             float full_h[UI_MAX_PANELS], own[UI_MAX_PANELS]; float content_h; } sv;   /* full_h, own: by panel slot */
+} US;
 static const arc_ui_theme UI_DEFAULT = {
     .scale = 2, .padding = 6, .spacing = 4,
     .panel = 0xD0181C24, .title = 0xFF2C3E58, .widget = 0xFF2A303C, .hover = 0xFF3A4458, .active = 0xFF4E6A96,
@@ -89,6 +95,10 @@ static float text_h(void) { return U.font.id ? (float)arc_font_size(U.font) * U.
 static bool g_rec_raw;   /* 0.10.2: re-recording window-space commands (no viewport offset) */
 static void rec(int kind, float x, float y, float w, float h, uint32_t color, const char *s) {
     if (U.ncmd >= UI_MAX_CMDS) return;
+    if (US.on && kind != UC_CLIP) {   /* 0.10.17: wholly scrolled out of view: not recorded */
+        float hh = (kind == UC_TEXT || kind == UC_RICH) ? (U.font.id ? (float)arc_font_size(U.font) : 8.0f) * (w > 0 ? w : (U.font.id ? U.font_scale * uis() : th()->scale * ds())) * 1.5f : h;
+        if (y >= US.vis_bot || y + hh <= US.vis_top) return;
+    }
     int vx, vy; if (!g_rec_raw && arc__viewport_cur(&vx, &vy, NULL, NULL)) { x += (float)vx; y += (float)vy; }   /* 0.10.2: drawn over the window later */
     ui_cmd *c = &U.cmds[U.ncmd++]; c->kind = (uint8_t)kind; c->x = x; c->y = y; c->w = w; c->h = h; c->color = color; c->text = -1;
     if (s) {
@@ -214,17 +224,24 @@ uint64_t arc__ui_test_cmd_hash(void) {          /* self-test: what the UI will d
 void arc__ui_render(void) {
     if (!U.ncmd) return;
     arc_blend b = arc_get_blend(); arc_set_blend(ARC_BLEND_ALPHA);
+    bool clip = false; float ox = 0, oy = 0;   /* 0.10.17: inside a scroll panel's clip, drawn relative to it */
     for (int i = 0; i < U.ncmd; i++) {
         const ui_cmd *c = &U.cmds[i];
-        if (c->kind == UC_RECT) arc_draw_rect(c->x, c->y, c->w, c->h, c->color);
-        else if (c->kind == UC_LINES) arc_draw_rect_lines(c->x, c->y, c->w, c->h, c->color);
-        else if (c->kind == UC_NINE) { const ui_skin *s = &U.skin[c->text]; arc_draw_nine(s->t, c->x, c->y, c->w, c->h, s->src, s->dst * ds(), c->color); }
-        else if (c->text >= 0 && c->kind == UC_RICH) arc_rich_draw(U.font, c->x, c->y, c->w > 0 ? c->w : base_scale(), c->color, 0, U.text + c->text);
+        float x = c->x - ox, y = c->y - oy;
+        if (c->kind == UC_CLIP) {
+            if (clip) { arc_pop_offset2d(); clip = false; ox = oy = 0; }
+            if (c->w > 0 && c->h > 0) { arc_push_offset2d(c->x, c->y, c->w, c->h); clip = true; ox = c->x; oy = c->y; }
+        }
+        else if (c->kind == UC_RECT) arc_draw_rect(x, y, c->w, c->h, c->color);
+        else if (c->kind == UC_LINES) arc_draw_rect_lines(x, y, c->w, c->h, c->color);
+        else if (c->kind == UC_NINE) { const ui_skin *s = &U.skin[c->text]; arc_draw_nine(s->t, x, y, c->w, c->h, s->src, s->dst * ds(), c->color); }
+        else if (c->text >= 0 && c->kind == UC_RICH) arc_rich_draw(U.font, x, y, c->w > 0 ? c->w : base_scale(), c->color, 0, U.text + c->text);
         else if (c->text >= 0) {
-            if (U.font.id) arc_font_draw_ex(U.font, c->x, c->y, c->w > 0 ? c->w : U.font_scale * uis(), 0, c->color, U.text + c->text);
-            else arc_draw_text(c->x, c->y, c->w > 0 ? c->w : th()->scale * ds(), c->color, U.text + c->text);
+            if (U.font.id) arc_font_draw_ex(U.font, x, y, c->w > 0 ? c->w : U.font_scale * uis(), 0, c->color, U.text + c->text);
+            else arc_draw_text(x, y, c->w > 0 ? c->w : th()->scale * ds(), c->color, U.text + c->text);
         }
     }
+    if (clip) arc_pop_offset2d();
     arc_set_blend(b);
 }
 bool arc_ui_wants_mouse(void) { return U.mouse_over_last || U.mouse_over_ui || U.active != 0; }
@@ -312,6 +329,21 @@ void arc_ui_end(void) {
     if (!U.in_panel) return;
     if (U.col) { U.cy = U.col_y0 + U.col_maxh + th()->spacing * ds(); U.col = 0; }
     float h = U.cy - U.py + pad() - th()->spacing * ds();
+    if (US.on) {   /* 0.10.17: a scroll panel: its full height, the part shown, the bar, the range kept */
+        float full = h + *US.scroll, vis = arc_minf(full, US.max_px), range = arc_maxf(0.0f, full - vis);
+        US.on = false;
+        rec(UC_CLIP, 0, 0, 0, 0, 0, NULL);
+        if (range > 0.5f) {
+            float bw = arc_maxf(2.0f, 3.0f * ds()), in = arc_maxf(1.0f, 2.0f * ds());
+            float tx = U.px + U.pw - bw - in, ty = US.vis_top + in, tl = U.py + vis - in - ty;
+            float tlen = arc_maxf(arc_minf(tl, 12.0f * ds()), tl * vis / full), t = arc_clampf(*US.scroll / range, 0, 1);
+            rect(tx, ty, bw, tl, (th()->text_dim & 0xFFFFFFu) | 0x40000000u);
+            rect(tx, ty + (tl - tlen) * t, bw, tlen, th()->accent);
+        }
+        *US.scroll = arc_clampf(*US.scroll, 0, range);
+        if (U.pslot >= 0) US.sv.full_h[U.pslot] = full;
+        US.sv.content_h = full; h = vis;
+    } else US.sv.content_h = h;
     if (U.bg_cmd >= 0 && U.bg_cmd < U.ncmd) U.cmds[U.bg_cmd].h = h;
     if (mouse_in(U.px, U.py, U.pw, h)) U.mouse_over_ui = true;
     if (U.pslot >= 0) {   /* 0.10.12 for arc_ui_panel_rect and frame.ui_panels */
@@ -330,6 +362,40 @@ void arc_ui_end(void) {
         U.scale = UL.scale_save; UL.anchored = false;
     }
 }
+/* 0.10.17 (MOLTEN BREACH) a panel with a height limit: clipped, scrolled by drag and wheel */
+void arc_ui_begin_scroll(const char *title, float x, float y, float w, float max_h, float *scroll) {
+    arc_ui_begin(title, x, y, w);
+    float *sp = scroll ? scroll : U.pslot >= 0 ? &US.sv.own[U.pslot] : NULL;
+    if (max_h <= 0 || !sp) return;
+    float p = pad(), maxpx = max_h * ds(), top = U.cy - p, bot = U.py + maxpx;
+    if (bot <= top + 1.0f) return;   /* too short to show anything: a plain panel */
+    float full = U.pslot >= 0 ? US.sv.full_h[U.pslot] : 0, vis = full > 0 ? arc_minf(full, maxpx) : maxpx;
+    float range = full > 0 ? arc_maxf(0.0f, full - vis) : 1e9f;
+    if (!(*sp >= 0)) *sp = 0;   /* (NaN too) */
+    *sp = arc_minf(*sp, range);
+    float bx = U.px, by = top, bw = U.pw, bh = U.py + vis - top;   /* the part of the content in view */
+    if (mouse_in(bx, by, bw, bh)) {
+        U.mouse_over_ui = true;
+        float wh = arc_mouse_wheel();
+        if (wh != 0) *sp = arc_clampf(*sp - wh * 40.0f * ds(), 0, range);
+        if (arc_key_pressed(ARC_MOUSE_LEFT) && !U.drag_panel) {
+            arc_v2 m = arc_mouse();
+            US.sv.drag_panel = U.panel_id; US.sv.sx = m.x; US.sv.sy = m.y; US.sv.s0 = *sp; US.sv.dragging = 0; US.sv.undecided = 1;
+        }
+    }
+    if (US.sv.drag_panel == U.panel_id && arc_key_down(ARC_MOUSE_LEFT)) {
+        arc_v2 m = arc_mouse(); float dx = m.x - US.sv.sx, dy = m.y - US.sv.sy, thr = 6.0f * ds();
+        if (US.sv.undecided) {   /* up or down past a few pixels: a scroll; sideways first: a slider's, left alone */
+            if (fabsf(dy) > thr && fabsf(dy) >= fabsf(dx)) { US.sv.dragging = 1; US.sv.undecided = 0; U.active = 0; }
+            else if (fabsf(dx) > thr) US.sv.undecided = 0;
+        }
+        if (US.sv.dragging) { *sp = arc_clampf(US.sv.s0 - dy, 0, range); U.mouse_over_ui = true; }
+    }
+    U.cy -= *sp; U.col_y0 = U.cy;
+    US.on = true; US.scroll = sp; US.vis_top = top; US.vis_bot = bot; US.max_px = maxpx;
+    rec(UC_CLIP, U.px, top, U.pw, bot - top, 0, NULL);
+}
+float arc_ui_content_height(void) { return US.sv.content_h; }
 void arc_ui_columns(int n) {
     if (U.col) { U.cy = U.col_y0 + U.col_maxh + th()->spacing * ds(); U.col = 0; }
     U.cols = arc_clampi(n, 1, 8); U.col_maxh = 0; U.col_y0 = U.cy;
@@ -352,6 +418,11 @@ static wstate interact(const char *label, float x, float y, float w, float h, bo
     wstate s; memset(&s, 0, sizeof s); s.index = -1;
     s.id = widget_id(label);
     s.hover = mouse_in(x, y, w, h);
+    bool hidden = false; float vt = -1e30f, vb = 1e30f;
+    if (US.on) {   /* 0.10.17: only the part in view of a scroll panel takes the pointer */
+        vt = US.vis_top; vb = US.vis_bot; hidden = y + h <= vt || y >= vb;
+        arc_v2 m = arc_mouse(); if (hidden || m.y < vt || m.y >= vb) s.hover = false;
+    }
     if (s.hover) U.mouse_over_ui = true;
     U.dim = U.disabled;
     if (U.disabled) { s.hover = false; if (U.active == s.id) U.active = 0; if (U.kb_focus == s.id) U.kb_focus = 0; return s; }   /* shown, not usable */
@@ -364,28 +435,41 @@ static wstate interact(const char *label, float x, float y, float w, float h, bo
         for (int i = 0, n = arc_touch_count(); i < n; i++) {
             const arc_touch *t = arc_touch_get(i);
             float tx = t->x - (float)vx, ty = t->y - (float)vy, sx = t->start_x - (float)vx, sy = t->start_y - (float)vy;
-            bool in_now = tx >= x && ty >= y && tx < x + w && ty < y + h, in_start = sx >= x && sy >= y && sx < x + w && sy < y + h;
+            bool in_now = tx >= x && ty >= y && tx < x + w && ty < y + h && ty >= vt && ty < vb, in_start = sx >= x && sy >= y && sx < x + w && sy < y + h;
+            if (hidden) in_now = false;
             if (t->pressed && in_now) { s.pressed = true; U.mouse_over_ui = true; }
             if (t->released && in_now && in_start) s.released_on = true;
         }
     }
+    if (US.sv.dragging) s.released_on = false;   /* 0.10.17: the drag scrolled a panel: no press */
     if (focusable) {
         int idx = U.focus_count++; s.index = idx;
         if (idx < UI_MAX_WIDGETS) { U.fr[idx][0] = x; U.fr[idx][1] = y; U.fr[idx][2] = w; U.fr[idx][3] = h; U.fr_lr[idx] = 0; U.nfr = idx + 1; }
         if (U.nav && idx == U.focus_index) {
             s.focused = true; U.nav_id = s.id;
             s.activate = arc_key_pressed(ARC_KEY_ENTER) || arc_key_pressed(ARC_KEY_SPACE) || arc_key_pressed(ARC_PAD_A) || arc_key_pressed(ARC_KEY_KP_ENTER);
+            if (US.on && s.id != US.sv.focus_id) {   /* 0.10.17: focus moved here: scroll it into view (next tick) */
+                if (y < vt) *US.scroll -= vt - y;
+                else if (y + h > vb) *US.scroll += arc_minf(y + h - vb, y - vt);
+            }
+            US.sv.focus_id = s.id;
         }
     }
     return s;
 }
 static void record_info(const char *label, const char *kind, float x, float y, float w, float h, float value, bool focused, const char *txt) {
     if (U.ninfo >= UI_MAX_WIDGETS) return;
+    bool clipped = false;
+    if (US.on) {   /* 0.10.17: out of view: not listed; partly: its visible part */
+        float y0 = arc_maxf(y, US.vis_top), y1 = arc_minf(y + h, US.vis_bot);
+        if (y1 <= y0) return;
+        clipped = y0 > y + 0.01f || y1 < y + h - 0.01f; y = y0; h = y1 - y0;
+    }
     ui_widget_info *i = &U.info[U.ninfo++];
     visible(label, i->label, sizeof i->label); i->kind = kind;
     if (U.rich && strchr(i->label, '[')) { char t[sizeof i->label]; arc_rich_strip(i->label, t, sizeof t); memcpy(i->label, t, sizeof t); }
     if (focused) memcpy(U.focused_now, i->label, sizeof U.focused_now);
-    i->x = x; i->y = y; i->w = w; i->h = h; i->value = value; i->focused = focused;
+    i->x = x; i->y = y; i->w = w; i->h = h; i->value = value; i->focused = focused; i->clipped = clipped;
     snprintf(i->text, sizeof i->text, "%s", txt ? txt : "");
 }
 static uint32_t lerp_argb(uint32_t a, uint32_t b, float t) {
@@ -637,6 +721,7 @@ void arc__ui_json(arc_json *j, const char *key) {   /* 0.9.0: the widget list as
         arc_json_num_k(j, "value", w->value);
         if (w->text[0]) arc_json_str_k(j, "text", w->text);
         if (w->focused) arc_json_bool_k(j, "focused", true);
+        if (w->clipped) arc_json_bool_k(j, "clipped", true);
         arc_json_end(j);
     }
     arc_json_end(j);
@@ -652,6 +737,7 @@ void arc__ui_print(void) {
         arc_json_num_k(&j, "value", w->value);
         if (w->text[0]) arc_json_str_k(&j, "text", w->text);
         if (w->focused) arc_json_bool_k(&j, "focused", true);
+        if (w->clipped) arc_json_bool_k(&j, "clipped", true);
         arc_json_end(&j);
     }
     arc_json_end(&j);
@@ -692,7 +778,7 @@ void arc__ui_tick_end(void) {
     if (U.in_panel) arc_ui_end();
     ux_tick_end();
     memcpy(U.focused_done, U.focused_now, sizeof U.focused_done); U.focused_now[0] = 0;
-    if (!arc_key_down(ARC_MOUSE_LEFT)) { U.active = 0; U.drag_panel = 0; } if (U.focus_count && U.focus_index >= U.focus_count) U.focus_index = U.focus_count - 1; }
+    if (!arc_key_down(ARC_MOUSE_LEFT)) { U.active = 0; U.drag_panel = 0; US.sv.drag_panel = 0; US.sv.dragging = US.sv.undecided = 0; } if (U.focus_count && U.focus_index >= U.focus_count) U.focus_index = U.focus_count - 1; }
 
 /* state snapshots: what the UI remembers between ticks (focus, pressed widget, panel positions) */
 typedef struct { uint32_t hot, active, kb_focus, drag_panel, nav_id; float drag_off_x, drag_off_y; int32_t focus_index, focus_count; uint8_t nav; arc_v2 last_mouse; ui_panel_rec panels[UI_MAX_PANELS]; } ui_saved;
@@ -722,6 +808,10 @@ size_t arc__ui_state(arc_writer *w) {
             int32_t hv[2] = { gh->n, gh->ntext }; float fv2[3] = { gh->age, gh->cx, gh->cy };
             arc_write(w, hv, sizeof hv); arc_write(w, fv2, sizeof fv2); arc_write(w, gh->c, sizeof(ui_cmd) * (size_t)gh->n); arc_write(w, gh->text, (size_t)gh->ntext);
         }
+    }
+    {   /* 0.10.17 block: scroll panels (a drag under way, heights, ARC-kept positions) */
+        uint32_t m3 = 0x37315355u, sz = (uint32_t)sizeof US.sv;
+        arc_write(w, &m3, 4); arc_write(w, &sz, 4); arc_write(w, &US.sv, sizeof US.sv);
     }
     return w->len;
 }
@@ -753,7 +843,16 @@ bool arc__ui_state_read(arc_reader *r, bool commit) {   /* commit false: only ch
             if (!arc_read(r, gho[g].c, sizeof(ui_cmd) * (size_t)hv[0]) || !arc_read(r, gho[g].text, (size_t)hv[1])) return false;
         }
     }
+    static uint8_t svb[sizeof US.sv]; bool has_sv = false; uint32_t m3 = 0;   /* 0.10.17 block (older states end before it) */
+    if (r->pos + 4 <= r->size) memcpy(&m3, r->data + r->pos, 4);
+    if (m3 == 0x37315355u) {
+        uint32_t sz = 0; r->pos += 4;
+        if (!arc_read(r, &sz, 4) || sz != sizeof US.sv || !arc_read(r, svb, sizeof svb)) { r->fail = true; return false; }
+        has_sv = true;
+    }
     if (!commit) return true;
+    if (has_sv) memcpy(&US.sv, svb, sizeof US.sv); else memset(&US.sv, 0, sizeof US.sv);
+    US.on = false;
     if (has_anim) {
         U.serial = serial; memcpy(U.pan, pan, sizeof pan); memcpy(U.wan, wan, sizeof wan); memcpy(U.ghost, gho, sizeof gho);
         memcpy(U.cmds, cmds, sizeof(ui_cmd) * nc); U.ncmd = (int)nc; memcpy(U.text, text, nt); U.ntext = (int)nt;

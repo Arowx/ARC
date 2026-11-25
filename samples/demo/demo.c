@@ -34,6 +34,8 @@ static float v_text_test, v_save_test;   /* 0.10.12: a centred DOCK button label
 static float v_offset2d_test;   /* 0.10.13: a panel and a label laid out from (0, 0) inside the safe area */
 static float v_lines2d_test;    /* 0.10.13: that many glowing 2D segments in one arc_draw_lines2d call */
 static float v_music_loop_test; /* 0.10.13: play tests/loop_test.qoa (8 s, a step up in pitch each second) looping 2..6 s */
+static float v_scroll_panel_test;   /* 0.10.17: a 200-pixel-high scroll panel of 30 buttons "Row 1".."Row 30" (UI at half size) */
+static struct { float scroll; int clicks; char last[16]; } g_scroll;
 static arc_music g_loop_music;
 
 static void reset(void) {
@@ -72,6 +74,7 @@ static void init(void) {
     arc_var("offset2d_test", &v_offset2d_test, 0.0f);
     arc_var("lines2d_test", &v_lines2d_test, 0.0f);
     arc_var("music_loop_test", &v_music_loop_test, 0.0f);
+    arc_var("scroll_panel_test", &v_scroll_panel_test, 0.0f);
     arc_pool_make(&G.enemies, arc_perm(), enemy, MAX_ENEMIES);
     arc_pool_make(&G.bullets, arc_perm(), bullet, MAX_BULLETS);
     arc_pool_make(&G.particles, arc_perm(), particle, MAX_PARTICLES);
@@ -97,6 +100,15 @@ static void tick(void) {
         if (g_loop_music.id) { arc_music_set_loop(g_loop_music, 2.0f, 6.0f); arc_music_play(g_loop_music, true); }
     }
     if (v_save_test > 0.5f && !G.saved) { int v = 42; G.saved = arc_save("demo_test", &v, sizeof v); }   /* 0.10.12 */
+    if (v_scroll_panel_test > 0.5f) {   /* 0.10.17 (MOLTEN BREACH): drag or wheel to scroll; a drag presses nothing */
+        arc_ui_set_scale(0.5f);
+        arc_ui_begin_scroll("Orders", 20, 40, 600, 400, &g_scroll.scroll);   /* 300 x 200 pixels at half size */
+        for (int i = 1; i <= 30; i++) {
+            char label[16]; snprintf(label, sizeof label, "Row %d", i);
+            if (arc_ui_button(label)) { g_scroll.clicks++; snprintf(g_scroll.last, sizeof g_scroll.last, "%s", label); }
+        }
+        arc_ui_end();
+    }
     float dt = arc_dt();
     if (G.bench) { G.bench_t += dt; return; }
     if (arc_key_pressed(ARC_KEY_C)) G.cam_mode ^= 1;
@@ -293,6 +305,10 @@ static void dump(arc_json *j) {
     arc_json_int_k(j, "lives", G.lives); arc_json_int_k(j, "score", G.score); arc_json_int_k(j, "wave", G.wave);
     arc_json_bool_k(j, "dead", G.dead);
     arc_json_int_k(j, "demo_setting", G.demo_setting); arc_json_bool_k(j, "saved", G.saved);
+    if (v_scroll_panel_test > 0.5f) {   /* 0.10.17 */
+        arc_json_num_k(j, "scroll", g_scroll.scroll); arc_json_int_k(j, "scroll_clicks", g_scroll.clicks); arc_json_str_k(j, "scroll_last", g_scroll.last);
+        arc_json_num_k(j, "scroll_content_h", arc_ui_content_height());
+    }
     arc_json_num_k(j, "music_position", g_loop_music.id ? arc_music_position(g_loop_music) : -1.0f); arc_json_bool_k(j, "music_playing", arc_music_playing(g_loop_music));
     { arc_gfx_stats st = arc_stats(); arc_json_obj_k(j, "stats"); arc_json_int_k(j, "vertices_2d", st.vertices_2d); arc_json_end(j); }   /* 0.10.13 */
     arc_json_int_k(j, "enemies", G.enemies.count); arc_json_int_k(j, "bullets", G.bullets.count); arc_json_int_k(j, "particles", G.particles.count);

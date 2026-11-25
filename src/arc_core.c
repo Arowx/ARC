@@ -896,7 +896,7 @@ void arc__input_test_step(void) {
     memset(s.text, 0, sizeof s.text);
     size_t tl = strlen(g_text); if (tl >= sizeof s.text) tl = sizeof s.text - 1;   /* 0.8.5: text typed with arc__input_char, as a real frame does */
     memcpy(s.text, g_text, tl); s.text[tl] = 0; g_text[0] = 0;
-    snap_pads(&s);
+    snap_pads(&s); s.wheel = g_raw_wheel; g_raw_wheel = 0;   /* 0.10.17: wheel steps too */
     g_cur = s;
 }
 
@@ -1506,6 +1506,7 @@ static void print_help(void) {
          "ARC help   press K | release K     hold / let go of a key (A..Z 0..9 SPACE LEFT UP ESC MOUSE_LEFT ...)\n"
          "ARC help   tap K [N]               hold K for N ticks (default 1) then release\n"
          "ARC help   mouse X Y               move the mouse (pixels); click [K] taps MOUSE_LEFT\n"
+         "ARC help   wheel N                 turn the mouse wheel N steps next tick (+ up, - down)\n"
          "ARC help   tap PAD_A | axis LX 0.5  gamepad buttons and sticks (LX LY RX RY LT RT; axis LX 0 lets go)\n"
          "ARC help   type TEXT               typed text (arc_text_input) next tick;  touch on|off  finger mode\n"
          "ARC help   touch down ID X Y / touch move ID X Y / touch up ID   fingers (multi-touch)\n"
@@ -2220,6 +2221,7 @@ static bool run_command(const char *line) {
         snap_set(&g_virtual, ARC_MOUSE_LEFT, true); g_tap_ticks[ARC_MOUSE_LEFT] = 1;
         printf("ARC ok ui_click %s %.0f %.0f\n", label, x, y); fflush(stdout); return false;
     }
+    if (!strcmp(c, "wheel") && argc >= 2) { g_raw_wheel += (float)atof(argv[1]); return false; }   /* 0.10.17: wheel steps next tick (+ = up) */
     if (!strcmp(c, "mouse") && argc >= 3) { g_virtual.mx = (float)atof(argv[1]); g_virtual.my = (float)atof(argv[2]); g_mouse_virtual = true; return false; }
     if (!strcmp(c, "ui_fit")) { if (!arc__ui_fit_start(argc, argv)) return false; g_wait_until = G.ticks + (uint64_t)arc__ui_fit_ticks(); return true; }   /* 0.10.1 */
     if (!strcmp(c, "sheet")) { void arc__sheet_command(int, const char **, bool (*)(void)); arc__sheet_command(argc, argv, render_now); return false; }   /* 0.10.1 */
