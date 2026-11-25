@@ -55,8 +55,8 @@ extern "C" {
 #define ARC_GAME_API
 #endif
 
-#define ARC_VERSION "0.10.18"
-#define ARC_VERSION_NUM 1018  /* major*10000 + minor*100 + patch; games can #if ARC_VERSION_NUM < ... #error */
+#define ARC_VERSION "0.10.19"
+#define ARC_VERSION_NUM 1019  /* major*10000 + minor*100 + patch; games can #if ARC_VERSION_NUM < ... #error */
 /* 0.9.8 feature macros: one per feature group, so a game (or its CMake) can #if on what this arc.h has instead of
    searching it for function names. The value is the ARC_VERSION_NUM it arrived in. New groups are added here with
    each release; a macro is never removed while its feature stays. */
@@ -2280,7 +2280,8 @@ ARC_API int  arc_navmesh_islands(arc_navmesh nm);          /* separate walkable 
 /* Path from `from` to `to` for an agent of `radius`: writes up to max corner points, the first = from (moved onto the
    mesh), the last = to (or the nearest walkable point to it). Returns the number of points; 0 when there is no path
    (different islands, or every way is narrower than 2 * radius). A longer path is cut at max (its total count is
-   still returned, so compare with max). */
+   still returned, so compare with max). 0.10.19: "narrower" means a gap between two points on the edge of the walkable
+   area; small inner triangles (a fine add_grid) no longer block wide agents. */
 ARC_API int  arc_navmesh_path(arc_navmesh nm, arc_v3 from, arc_v3 to, float radius, arc_v3 *out, int max);
 ARC_API float arc_navmesh_path_length(const arc_v3 *pts, int n);
 /* nearest point on the walkable surface within max_dist (0 = any distance); false if none */

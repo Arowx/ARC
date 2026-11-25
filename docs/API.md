@@ -2404,7 +2404,8 @@ ARC_API int arc_navmesh_islands(arc_navmesh nm);    // separate walkable areas (
 Path from `from` to `to` for an agent of `radius`: writes up to max corner points, the first = from (moved onto the
    mesh), the last = to (or the nearest walkable point to it). Returns the number of points; 0 when there is no path
    (different islands, or every way is narrower than 2 * radius). A longer path is cut at max (its total count is
-   still returned, so compare with max).
+   still returned, so compare with max). 0.10.19: "narrower" means a gap between two points on the edge of the walkable
+   area; small inner triangles (a fine add_grid) no longer block wide agents.
 
 ```c
 ARC_API int arc_navmesh_path(arc_navmesh nm, arc_v3 from, arc_v3 to, float radius, arc_v3 *out, int max);

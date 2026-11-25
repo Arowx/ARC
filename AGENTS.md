@@ -236,7 +236,7 @@ as for games with `draw()`.
 - juice (hit-stop, shake, flashes, pop-ins, confetti, `arc_popup_text`, a combo meter);
 - Ludo art with a code-made fallback when the assets are missing.
 
-Its `look 180` / `capture 1` / `spawn_at 0 -5 beetle` commands set up test scenes. ARC's own checks still use its
+Its bugs path round the cover on a navmesh built from a half-unit grid (0.10.19; `navdraw` shows it, `enemy.nav 0` turns it off). Its `look 180` / `capture 1` / `spawn_at 0 -5 beetle` commands set up test scenes. ARC's own checks still use its
 `*_test` tunables.
 
 ## Asking ARC for a change (0.10.13)
